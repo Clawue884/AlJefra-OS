@@ -1,9 +1,9 @@
 # Benchmark Comparison: Baseline vs Gen-8
 
-**Generated:** 2026-02-25 22:25 UTC
+**Generated:** 2026-02-25 22:40 UTC
 **Tool:** benchmark_compare.sh | NASM version 2.16.03
 **Baseline:** commit `fd5a707` — Original BareMetal OS fork
-**Gen-8:** commit `4c32537` — 8 generations of AI-directed evolution (~200+ optimizations)
+**Gen-8:** commit `0269721` — 8 generations of AI-directed evolution (~200+ optimizations)
 
 > Both kernels built with `-dNO_VGA`. Gen-8 additionally uses `-dNO_GPU` to exclude
 > GPU/evolution/AI code added post-fork. Comparison covers **shared original components only**.
@@ -15,8 +15,8 @@
 | Metric | Baseline | Gen-8 | Delta | Change |
 |--------|----------|-------|-------|--------|
 | **Binary size** (bytes) | 20480 | 20480 | 0 | 0.0% |
-| **Total instructions** | 4155 | 4809 | 654 | 15.7% |
-| **Code bytes** | 10770 | 12834 | 2064 | 19.2% |
+| **Total instructions** | 4155 | 4804 | 649 | 15.6% |
+| **Code bytes** | 10770 | 12803 | 2033 | 18.9% |
 | **Avg instruction length** | 2.59B | 2.67B | — | — |
 | **Boot time (QEMU)** | N/Ams | N/Ams | N/Ams | — |
 
@@ -28,20 +28,20 @@ Instruction-level patterns compared across all shared `.asm` source files.
 
 | Pattern | Description | Baseline | Gen-8 | Delta | Direction |
 |---------|-------------|----------|-------|-------|-----------|
-| `test` | Zero-comparison (efficient) | 15 | 69 | +54 ↑ |
+| `test` | Zero-comparison (efficient) | 15 | 70 | +55 ↑ |
 | `cmp *, 0` | Zero-comparison (replaced by test) | 18 | 7 | -11 ↓ |
 | `lea` | Address calc (replaces shl+add) | 1 | 13 | +12 ↑ |
 | `pause` | Spin-wait hint (new in Gen-8) | 0 | 7 | +7 ↑ |
-| `bt/bts/btr` | Bit-test operations | 43 | 47 | +4 ↑ |
+| `bt/bts/btr` | Bit-test operations | 43 | 45 | +2 ↑ |
 | `jmp` | Jumps (incl. tail-call conversions) | 101 | 141 | +40 ↑ |
 | `prefetchnta` | Cache prefetch hints | 0 | 13 | +13 ↑ |
-| `xchg` | Implicit LOCK exchange (eliminated) | 13 | 13 | 0 — |
+| `xchg` | Implicit LOCK exchange (eliminated) | 13 | 12 | -1 ↓ |
 | `rep stosq` | 64-bit memory fill | 1 | 7 | +6 ↑ |
 | `rep stosd` | 32-bit memory fill (replaced) | 6 | 7 | +1 ↑ |
 | `call os_apic_write` | APIC write calls (inlined in Gen-8) | 11 | 6 | -5 ↓ |
 | Inline EOI | Direct APIC EOI writes | 0 | 0 | 0 — |
 | `movzx` | Zero-extending loads | 0 | 14 | +14 ↑ |
-| `xor eax, eax` | 32-bit zero idiom | 84 | 104 | +20 ↑ |
+| `xor eax, eax` | 32-bit zero idiom | 84 | 106 | +22 ↑ |
 
 ---
 
@@ -53,36 +53,36 @@ Source lines (SL), instruction count (IC), and code bytes (CB) for each shared c
 |-----------|-----------|-----------|-----|-----------|-----------|-----|-----------|-----------|-----|
 | `kernel.asm` | 144 | 168 | +24 | 76 | 75 | -1 | 267 | 281 | +14 |
 | `init.asm` | 18 | 19 | +1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `init/64.asm` | 210 | 223 | +13 | 129 | 138 | +9 | 519 | 544 | +25 |
-| `init/bus.asm` | 143 | 143 | 0 | 70 | 70 | 0 | 226 | 223 | -3 |
+| `init/64.asm` | 210 | 223 | +13 | 129 | 138 | +9 | 519 | 542 | +23 |
+| `init/bus.asm` | 143 | 143 | 0 | 70 | 70 | 0 | 226 | 217 | -9 |
 | `init/hid.asm` | 27 | 27 | 0 | 4 | 4 | 0 | 16 | 16 | 0 |
 | `init/net.asm` | 95 | 103 | +8 | 52 | 57 | +5 | 196 | 217 | +21 |
 | `init/nvs.asm` | 53 | 55 | +2 | 21 | 22 | +1 | 78 | 82 | +4 |
 | `init/sys.asm` | 39 | 39 | 0 | 12 | 12 | 0 | 58 | 58 | 0 |
 | `syscalls.asm` | 19 | 22 | +3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `syscalls/bus.asm` | 183 | 179 | -4 | 96 | 92 | -4 | 253 | 253 | 0 |
-| `syscalls/debug.asm` | 244 | 250 | +6 | 160 | 159 | -1 | 452 | 471 | +19 |
+| `syscalls/bus.asm` | 183 | 178 | -5 | 96 | 91 | -5 | 253 | 252 | -1 |
+| `syscalls/debug.asm` | 244 | 250 | +6 | 160 | 159 | -1 | 452 | 469 | +17 |
 | `syscalls/io.asm` | 72 | 71 | -1 | 27 | 26 | -1 | 67 | 65 | -2 |
 | `syscalls/net.asm` | 174 | 174 | 0 | 81 | 80 | -1 | 231 | 230 | -1 |
 | `syscalls/nvs.asm` | 89 | 91 | +2 | 43 | 45 | +2 | 113 | 117 | +4 |
 | `syscalls/smp.asm` | 288 | 370 | +82 | 147 | 178 | +31 | 383 | 464 | +81 |
-| `syscalls/system.asm` | 421 | 429 | +8 | 126 | 108 | -18 | 399 | 373 | -26 |
+| `syscalls/system.asm` | 421 | 428 | +7 | 126 | 107 | -19 | 399 | 371 | -28 |
 | `drivers.asm` | 53 | 71 | +18 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `drivers/apic.asm` | 82 | 103 | +21 | 12 | 22 | +10 | 43 | 67 | +24 |
-| `drivers/ioapic.asm` | 127 | 133 | +6 | 52 | 54 | +2 | 143 | 149 | +6 |
+| `drivers/ioapic.asm` | 127 | 133 | +6 | 52 | 54 | +2 | 143 | 147 | +4 |
 | `drivers/msi.asm` | 195 | 196 | +1 | 107 | 107 | 0 | 272 | 265 | -7 |
 | `drivers/ps2.asm` | 305 | 309 | +4 | 137 | 140 | +3 | 522 | 519 | -3 |
 | `drivers/serial.asm` | 148 | 147 | -1 | 47 | 46 | -1 | 123 | 121 | -2 |
 | `drivers/timer.asm` | 364 | 366 | +2 | 158 | 160 | +2 | 478 | 480 | +2 |
 | `drivers/virtio.asm` | 94 | 94 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `drivers/bus/pci.asm` | 92 | 92 | 0 | 26 | 26 | 0 | 63 | 63 | 0 |
-| `drivers/bus/pcie.asm` | 112 | 112 | 0 | 41 | 41 | 0 | 102 | 102 | 0 |
-| `drivers/nvs/virtio-blk.asm` | 421 | 416 | -5 | 237 | 231 | -6 | 729 | 706 | -23 |
-| `drivers/net/virtio-net.asm` | 634 | 623 | -11 | 393 | 378 | -15 | 1207 | 1170 | -37 |
-| `drivers/lfb/lfb.asm` | 635 | 651 | +16 | 18 | 18 | 0 | 72 | 72 | 0 |
+| `drivers/bus/pcie.asm` | 112 | 111 | -1 | 41 | 40 | -1 | 102 | 101 | -1 |
+| `drivers/nvs/virtio-blk.asm` | 421 | 416 | -5 | 237 | 230 | -7 | 729 | 702 | -27 |
+| `drivers/net/virtio-net.asm` | 634 | 623 | -11 | 393 | 378 | -15 | 1207 | 1165 | -42 |
+| `drivers/lfb/lfb.asm` | 635 | 650 | +15 | 18 | 18 | 0 | 72 | 72 | 0 |
 | `interrupt.asm` | 447 | 513 | +66 | 309 | 349 | +40 | 1078 | 1232 | +154 |
 | `sysvar.asm` | 181 | 181 | 0 | 17 | 17 | 0 | 95 | 105 | +10 |
-| **TOTAL (shared)** | **6109** | **6370** | **+261** | **2598** | **2655** | **+57** | **8185** | **8445** | **+260** |
+| **TOTAL (shared)** | **6109** | **6366** | **+257** | **2598** | **2651** | **+53** | **8185** | **8420** | **+235** |
 
 ### Gen-8 Only Components (not in baseline)
 
@@ -187,14 +187,14 @@ Detailed comparison of the most performance-critical functions.
 ```asm
    275                              <2> b_smp_lock:
    276                              <2> b_smp_lock_spin:
-   277 00000C08 F60001              <2> 	test byte [rax], 1	; EVOLVED Gen-8: test replacing bt (shorter, no bus lock)
-   278 00000C0B 7404                <2> 	jz b_smp_lock_try	; If free, try to acquire
-   279 00000C0D F390                <2> 	pause			; EVOLVED: Hint to CPU we're spin-waiting
-   280 00000C0F EBF7                <2> 	jmp b_smp_lock_spin	; Keep spinning (cache line stays Shared)
+   277 00000BF8 F60001              <2> 	test byte [rax], 1	; EVOLVED Gen-8: test replacing bt (shorter, no bus lock)
+   278 00000BFB 7404                <2> 	jz b_smp_lock_try	; If free, try to acquire
+   279 00000BFD F390                <2> 	pause			; EVOLVED: Hint to CPU we're spin-waiting
+   280 00000BFF EBF7                <2> 	jmp b_smp_lock_spin	; Keep spinning (cache line stays Shared)
    281                              <2> b_smp_lock_try:
-   282 00000C11 F0660FBA2800        <2> 	lock bts word [rax], 0	; Atomic test-and-set (requires Exclusive cache state)
-   283 00000C17 72EF                <2> 	jc b_smp_lock_spin	; Failed: another core grabbed it, back to read-only spin
-   284 00000C19 C3                  <2> 	ret			; Lock acquired
+   282 00000C01 F0660FBA2800        <2> 	lock bts word [rax], 0	; Atomic test-and-set (requires Exclusive cache state)
+   283 00000C07 72EF                <2> 	jc b_smp_lock_spin	; Failed: another core grabbed it, back to read-only spin
+   284 00000C09 C3                  <2> 	ret			; Lock acquired
    285                              <2> ; -----------------------------------------------------------------------------
    286                              <2> 
    287                              <2> 
@@ -241,8 +241,8 @@ Detailed comparison of the most performance-critical functions.
 
 ```asm
    292                              <2> b_smp_unlock:
-   293 00000C1A C60000              <2> 	mov byte [rax], 0	; EVOLVED Gen-8: store-release (x86 TSO guarantees visibility)
-   294 00000C1D C3                  <2> 	ret			; Lock released. Return to the caller
+   293 00000C0A C60000              <2> 	mov byte [rax], 0	; EVOLVED Gen-8: store-release (x86 TSO guarantees visibility)
+   294 00000C0D C3                  <2> 	ret			; Lock released. Return to the caller
    295                              <2> ; -----------------------------------------------------------------------------
    296                              <2> 
    297                              <2> 
@@ -290,19 +290,19 @@ Detailed comparison of the most performance-critical functions.
 
 ```asm
    166                              <1> ap_wakeup:
-   167 00003010 50                  <1> 	push rax
+   167 00003000 50                  <1> 	push rax
    168                              <1> 	; EVOLVED Gen-8: Inline EOI — eliminates call/ret + push/pop overhead
-   169 00003011 488B042500001100    <1> 	mov rax, [os_LocalAPICAddress]
-   170 00003019 C780B0000000000000- <1> 	mov dword [rax + APIC_EOI], 0
-   170 00003022 00                  <1>
-   171 00003023 58                  <1> 	pop rax
-   172 00003024 48CF                <1> 	iretq				; Return from the IPI
+   169 00003001 488B042500001100    <1> 	mov rax, [os_LocalAPICAddress]
+   170 00003009 C780B0000000000000- <1> 	mov dword [rax + APIC_EOI], 0
+   170 00003012 00                  <1>
+   171 00003013 58                  <1> 	pop rax
+   172 00003014 48CF                <1> 	iretq				; Return from the IPI
    173                              <1> ; -----------------------------------------------------------------------------
    174                              <1> 
    175                              <1> 
    176                              <1> ; -----------------------------------------------------------------------------
    177                              <1> ; Resets a CPU to execute ap_clear
-   178 00003026 90<rep 2h>          <1> align 8
+   178 00003016 90<rep 2h>          <1> align 8
 ```
 </details>
 
@@ -348,26 +348,26 @@ Detailed comparison of the most performance-critical functions.
 
 ```asm
     36                              <2> os_debug_dump_al:
-    37 00000776 50                  <2> 	push rax
-    38 00000777 53                  <2> 	push rbx
-    39 00000778 0FB6D8              <2> 	movzx ebx, al
-    40 0000077B C0EB04              <2> 	shr bl, 4			; High nibble index
-    41 0000077E 8A83[B6070000]      <2> 	mov al, [os_hex_table + rbx]	; EVOLVED: Direct table lookup, no branches
-    42 00000784 880425[97340000]    <2> 	mov [tchar+0], al
-    43 0000078B 0FB65C2408          <2> 	movzx ebx, byte [rsp+8]	; Reload original AL from stack
-    44 00000790 80E30F              <2> 	and bl, 0x0F			; Low nibble index
-    45 00000793 8A83[B6070000]      <2> 	mov al, [os_hex_table + rbx]	; EVOLVED: Direct table lookup, no branches
-    46 00000799 880425[98340000]    <2> 	mov [tchar+1], al
-    47 000007A0 5B                  <2> 	pop rbx
-    48 000007A1 58                  <2> 	pop rax
-    49 000007A2 56                  <2> 	push rsi
-    50 000007A3 51                  <2> 	push rcx
-    51 000007A4 BE[97340000]        <2> 	mov esi, tchar
-    52 000007A9 B902000000          <2> 	mov rcx, 2
-    53 000007AE E8D8010000          <2> 	call b_output
-    54 000007B3 59                  <2> 	pop rcx
-    55 000007B4 5E                  <2> 	pop rsi
-    56 000007B5 C3                  <2> 	ret
+    37 0000076D 50                  <2> 	push rax
+    38 0000076E 53                  <2> 	push rbx
+    39 0000076F 0FB6D8              <2> 	movzx ebx, al
+    40 00000772 C0EB04              <2> 	shr bl, 4			; High nibble index
+    41 00000775 8A83[AD070000]      <2> 	mov al, [os_hex_table + rbx]	; EVOLVED: Direct table lookup, no branches
+    42 0000077B 880425[87340000]    <2> 	mov [tchar+0], al
+    43 00000782 0FB65C2408          <2> 	movzx ebx, byte [rsp+8]	; Reload original AL from stack
+    44 00000787 80E30F              <2> 	and bl, 0x0F			; Low nibble index
+    45 0000078A 8A83[AD070000]      <2> 	mov al, [os_hex_table + rbx]	; EVOLVED: Direct table lookup, no branches
+    46 00000790 880425[88340000]    <2> 	mov [tchar+1], al
+    47 00000797 5B                  <2> 	pop rbx
+    48 00000798 58                  <2> 	pop rax
+    49 00000799 56                  <2> 	push rsi
+    50 0000079A 51                  <2> 	push rcx
+    51 0000079B BE[87340000]        <2> 	mov esi, tchar
+    52 000007A0 B902000000          <2> 	mov rcx, 2
+    53 000007A5 E8D6010000          <2> 	call b_output
+    54 000007AA 59                  <2> 	pop rcx
+    55 000007AB 5E                  <2> 	pop rsi
+    56 000007AC C3                  <2> 	ret
     57                              <2> 
     58                              <2> ; EVOLVED: Hex lookup table - eliminates all branch mispredictions in hex dump
 ```
