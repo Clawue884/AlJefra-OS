@@ -100,8 +100,7 @@ os_pcie_convert_valid:
 	ret
 
 os_pcie_convert_invalid:
-	xor edx, edx
-	not rdx				; Set RDX to 0xFFFFFFFFFFFFFFFF
+	or rdx, -1			; EVOLVED Gen-9: 1 instruction vs 2 (or imm8 sign-extends, 3 bytes)
 	pop rax
 	pop rsi
 	ret

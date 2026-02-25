@@ -64,7 +64,7 @@ init_bus_pcie_probe_found:
 	sub edx, 2
 	xor eax, eax			; Pad the Bus Table to 16 bytes
 	stosw
-	bts ax, 1			; Set bit for PCIe
+	mov al, 2			; EVOLVED Gen-9: direct mov replacing bts (avoids partial reg stall on 16-bit bts)
 	stosw
 
 init_bus_pcie_probe_next:
@@ -106,7 +106,7 @@ init_bus_pci_probe_found:
 	sub edx, 2
 	xor eax, eax			; Pad the Bus Table to 16 bytes
 	stosw
-	bts ax, 0			; Set bit for PCI
+	mov al, 1			; EVOLVED Gen-9: direct mov replacing bts (avoids partial reg stall)
 	stosw
 	jmp init_bus_pci_probe_next
 

@@ -137,7 +137,7 @@ b_smp_set:
 	jne b_smp_set_error	; Bail out if the core is already set
 
 	and al, 0x0F		; Keep only the lower 4 bits
-	cmp al, 0		; Are the lower 4 bits of the code address set to 0?
+	test al, al		; EVOLVED Gen-9: test replacing cmp-0 (shorter, canonical zero check)
 	jne b_smp_set_error	; Bail out if not as the code address isn't properly aligned
 
 	pop rax			; Restore the code address

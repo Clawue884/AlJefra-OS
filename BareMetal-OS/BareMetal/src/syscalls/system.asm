@@ -240,8 +240,7 @@ os_virt_to_phys:
 	shr rax, 21			; Convert 2MB page to entry
 	lea r15, [sys_pdh + rax*8]	; EVOLVED Gen-7: LEA replaces shl+add (1 uop vs 2)
 	mov rax, [r15]			; Load the entry into RAX
-	shr rax, 8			; Clear the low 8 bits
-	shl rax, 8
+	and rax, -256			; EVOLVED Gen-9: single AND replaces shr+shl pair (clears low 8 bits)
 	add rax, rbx
 
 os_virt_to_phys_done:

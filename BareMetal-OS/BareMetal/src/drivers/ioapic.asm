@@ -68,7 +68,7 @@ os_ioapic_mask_clear:
 	shl ecx, 1			; Quick multiply by 2
 	add ecx, IOAPICREDTBL		; Add offset
 	call os_ioapic_write		; Write the low 32 bits
-	add ecx, 1			; Increment for next register
+	inc ecx				; EVOLVED Gen-9: inc replacing add-1 (shorter encoding)
 	xor eax, eax
 	call os_ioapic_write		; Write the high 32 bits
 	pop rax
@@ -98,7 +98,7 @@ os_ioapic_redirection:
 	bts eax, 13			; Active low
 	bts eax, 15			; Level
 	call os_ioapic_write		; Write the low 32 bits
-	add ecx, 1			; Increment for next register
+	inc ecx				; EVOLVED Gen-9: inc replacing add-1 (shorter encoding)
 	xor eax, eax
 	call os_ioapic_write		; Write the high 32 bits
 	pop rax

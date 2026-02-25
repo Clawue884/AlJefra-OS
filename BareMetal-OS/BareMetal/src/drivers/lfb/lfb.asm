@@ -318,7 +318,7 @@ lfb_output_chars_cr:
 	mov al, ' '
 lfb_output_chars_cr_clearline:
 	call lfb_output_char
-	dec cx
+	dec ecx				; EVOLVED Gen-9: 32-bit dec (avoids partial register stall)
 	jnz lfb_output_chars_cr_clearline
 	dec word [Screen_Cursor_Row]
 	xor eax, eax
@@ -348,15 +348,14 @@ lfb_output_chars_tab:
 	mov ax, [Screen_Cursor_Col]	; Grab the current cursor X value (ex 7)
 	mov cx, ax
 	add ax, 8			; Add 8 (ex 15)
-	shr ax, 3			; Clear lowest 3 bits (ex 8)
-	shl ax, 3			; Bug? 'xor al, 7' doesn't work...
+	and ax, 0xFFF8			; EVOLVED Gen-9: single AND replaces shr+shl pair (clears low 3 bits)
 	sub ax, cx			; (ex 8 - 7 = 1)
 	mov cx, ax
 	mov al, ' '
 
 lfb_output_chars_tab_next:
 	call lfb_output_char
-	dec cx
+	dec ecx				; EVOLVED Gen-9: 32-bit dec (avoids partial register stall)
 	jnz lfb_output_chars_tab_next
 	pop rcx
 	jmp lfb_output_chars_nextchar
@@ -582,7 +581,7 @@ lfb_draw_line:
 	xor ecx, ecx
 	xor eax, eax
 	mov ax, [Screen_Cursor_Row]
-	add ax, 1
+	inc ax				; EVOLVED Gen-9: inc replacing add-1 (shorter encoding)
 	mov cx, font_h * 4		; Font height
 	mul cx
 	mov cx, [os_screen_ppsl]

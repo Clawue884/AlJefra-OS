@@ -101,7 +101,7 @@ nextchar:
 	lodsb
 	call os_debug_dump_al
 	dec rcx
-	inc rdx
+	inc edx				; EVOLVED Gen-9: 32-bit inc (avoids REX prefix, upper bits known 0)
 	cmp edx, 16			; EVOLVED Gen-8: 32-bit cmp (end of line?)
 	jne nextchar
 	call os_debug_newline
@@ -208,7 +208,7 @@ os_debug_block:
 	shr ax, 1			; Quick divide by 2
 	mov bx, [os_screen_x]		; Screen X
 	shl ebx, 2			; Quick multiply by 4
-	mul ebx				; Multiply EDX:EAX by EBX
+	imul eax, ebx			; EVOLVED Gen-9: 2-op imul (avoids EDX clobber, 2 uops vs 3)
 	mov rdi, [os_screen_lfb]	; Frame buffer base
 	add rdi, rax			; Offset is ((screeny - 8) / 2 + screenx * 4)
 	pop rax
@@ -218,8 +218,8 @@ os_debug_block:
 	shl edx, 2			; Quick multiply by 4 for line offset
 	xor ecx, ecx
 	mov cx, [os_screen_x]		; Screen X
-	shr cx, 4			; Quick divide by 16 (box width plus blank width)
-	sub cx, 8			; CX = total amount of 8-pixel wide blocks
+	shr ecx, 4			; EVOLVED Gen-9: 32-bit shift (avoids partial register stall)
+	sub ecx, 8			; EVOLVED Gen-9: 32-bit sub (avoids partial register stall)
 	add ebx, ecx
 	shl ebx, 5			; Quick multiply by 32 (8 pixels by 4 bytes each)
 	add rdi, rbx

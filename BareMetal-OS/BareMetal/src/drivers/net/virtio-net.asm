@@ -427,7 +427,7 @@ net_virtio_transmit:
 	stosq
 	mov eax, ecx			; Number of bytes
 	stosd
-	mov ax, 0
+	xor eax, eax			; EVOLVED Gen-9: xor replacing mov-0 (shorter, 2 vs 4 bytes)
 	stosw				; 16-bit Flags
 	stosw				; 16-bit Next
 
@@ -438,7 +438,7 @@ net_virtio_transmit:
 	stosw				; 16-bit Flags
 	mov ax, [rdx+0x76]		; nettxavailindex
 	stosw				; 16-bit Index
-	mov ax, 0
+	xor eax, eax			; EVOLVED Gen-9: xor replacing mov-0 (shorter)
 	stosw				; 16-bit Ring
 
 	; Notify the queue
@@ -460,7 +460,7 @@ net_virtio_transmit_wait:
 	jne net_virtio_transmit_wait
 
 	add word [rdx+0x74], 2		; nettxdescindex - 2 descriptor entries were required
-	add word [rdx+0x76], 1		; nettxavailindex
+	inc word [rdx+0x76]		; EVOLVED Gen-9: inc replacing add-1 (shorter encoding)
 
 	pop rax
 	pop rbx

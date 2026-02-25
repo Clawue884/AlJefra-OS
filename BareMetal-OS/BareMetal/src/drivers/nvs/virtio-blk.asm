@@ -294,7 +294,7 @@ virtio_blk_io:
 	stosw				; 16-bit flags
 	mov ax, [availindex]
 	stosw				; 16-bit index
-	mov ax, 0
+	xor eax, eax			; EVOLVED Gen-9: xor replacing mov-0 (shorter, 2 vs 4 bytes)
 	stosw				; 16-bit ring
 
 	; Notify the queue
@@ -313,7 +313,7 @@ virtio_blk_io_wait:
 	jne virtio_blk_io_wait
 
 	add word [descindex], 3		; 3 entries were required
-	add word [availindex], 1
+	inc word [availindex]		; EVOLVED Gen-9: inc replacing add-1 (shorter encoding)
 
 	pop rax
 	pop rbx

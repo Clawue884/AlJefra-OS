@@ -99,8 +99,7 @@ os_bus_read_bar:
 	and ebx, 0xFFFFFFF0		; Clear the low four bits
 	add rax, rbx			; Add the upper 32 and lower 32 together
 	mov r8, rax
-	xor eax, eax
-	not eax				; Flip all bits in EAX (which is currently 0 after XCHG with EBX)
+	or eax, -1			; EVOLVED Gen-9: 1 instruction vs 2 (or imm8 sign-extends to 0xFFFFFFFF, 3 bytes)
 	call os_bus_write		; Write 0xFFFFFFFF to the BAR
 	call os_bus_read		; Read the low 32 bits of the length
 	not eax

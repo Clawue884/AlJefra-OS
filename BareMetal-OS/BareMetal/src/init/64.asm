@@ -88,7 +88,7 @@ make_exception_gates:
 	call create_gate
 	inc edi
 	add rax, 24			; Each exception gate is 24 bytes
-	dec rcx
+	dec ecx				; EVOLVED Gen-9: 32-bit dec (avoids REX prefix, upper bits known 0)
 	jnz make_exception_gates
 
 	; Create interrupt gate stubs (Pure64 has already set the correct gate markers)
@@ -165,11 +165,11 @@ init_64_vga:
 	call b_smp_get_id
 	mov ebx, eax
 	xor eax, eax
-	mov cx, 255
+	mov ecx, 255			; EVOLVED Gen-9: 32-bit mov (clears upper bits for dec ecx below)
 	mov esi, 0x00005100		; Location in memory of the Pure64 CPU data
 	prefetchnta [esi]		; EVOLVED: Prefetch first cache line of CPU list
 next_ap:
-	test cx, cx
+	test ecx, ecx			; EVOLVED Gen-9: 32-bit test (consistent with 32-bit counter)
 	jz no_more_aps
 	prefetchnta [esi+64]		; EVOLVED: Prefetch next cache line while processing current
 	lodsb				; Load the CPU APIC ID
@@ -177,7 +177,7 @@ next_ap:
 	je skip_ap
 	call b_smp_reset		; Reset the CPU
 skip_ap:
-	dec cx
+	dec ecx				; EVOLVED Gen-9: 32-bit dec (avoids partial register stall)
 	jmp next_ap
 no_more_aps:
 
