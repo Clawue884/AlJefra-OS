@@ -6,6 +6,8 @@
 ; =============================================================================
 
 
+%ifndef NO_GPU
+
 ; -----------------------------------------------------------------------------
 ; b_gpu_status -- Get GPU status
 ;  IN:	Nothing
@@ -153,6 +155,54 @@ b_gpu_benchmark:
 	call gpu_benchmark
 	ret
 ; -----------------------------------------------------------------------------
+
+
+%else
+; NO_GPU stubs -- return failure/zero for all GPU syscalls
+
+b_gpu_status:
+	xor eax, eax
+	ret
+
+b_gpu_compute:
+	mov eax, 0xFFFFFFFF
+	ret
+
+b_gpu_mem_alloc:
+	mov rax, 0xFFFFFFFFFFFFFFFF
+	ret
+
+b_gpu_mem_free:
+	ret
+
+b_gpu_mem_copy_to:
+	xor eax, eax
+	ret
+
+b_gpu_mem_copy_from:
+	xor eax, eax
+	ret
+
+b_gpu_fence_wait:
+	ret
+
+b_gpu_mmio_read:
+	xor eax, eax
+	ret
+
+b_gpu_mmio_write:
+	ret
+
+b_gpu_vram_info:
+	xor eax, eax
+	xor edx, edx
+	ret
+
+b_gpu_benchmark:
+	xor eax, eax
+	ret
+
+%endif
 
 
 ; =============================================================================

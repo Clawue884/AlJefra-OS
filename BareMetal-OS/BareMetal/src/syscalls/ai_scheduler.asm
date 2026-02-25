@@ -222,7 +222,7 @@ ai_sched_find_best_core:
 
 	; Skip if core already busy
 	and rax, 0xFFFFFFFFFFFFFFF0	; Clear flags
-	cmp rax, 0
+	test rax, rax			; EVOLVED Gen-6: test replacing cmp-0
 	jne .next_core
 
 	; Check affinity mask

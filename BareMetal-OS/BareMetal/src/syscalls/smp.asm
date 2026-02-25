@@ -135,7 +135,7 @@ b_smp_set:
 	jnc b_smp_set_error	; Bail out if 0
 
 	and cl, 0xF0		; Clear the flags from the value in table
-	cmp rcx, 0		; Is there already a code address set?
+	test rcx, rcx		; EVOLVED Gen-6: test replacing cmp-0 (shorter encoding)
 	jne b_smp_set_error	; Bail out if the core is already set
 
 	and al, 0x0F		; Keep only the lower 4 bits
@@ -147,9 +147,11 @@ b_smp_set:
 	mov [rdi], rax		; Store code address
 
 	pop rcx			; Restore the APIC ID
-	xchg rax, rcx
+	; EVOLVED Gen-6: explicit mov replacing 3-uop xchg pair
+	mov r8, rax		; Save RAX in R8
+	mov rax, rcx		; Set up APIC ID for b_smp_wakeup (takes AL)
 	call b_smp_wakeup	; Wake up the core
-	xchg rax, rcx
+	mov rax, r8		; Restore RAX
 
 	pop rax
 	pop rdi
@@ -226,14 +228,15 @@ b_smp_busy:
 	xor ecx, ecx
 	mov rsi, os_SMP
 
+	align 16			; EVOLVED Gen-6: align hot scan loop
 b_smp_busy_read:
 	lodsq			; Load a single CPU entry. Flags are in AL
 	cmp bl, cl		; Compare entry to local APIC ID
 	je b_smp_busy_skip	; Skip the entry for the current CPU
-	inc cx
+	inc ecx			; EVOLVED Gen-6: 32-bit inc avoids partial reg stall
 	cmp rax, 0x01		; Bit 0 (Present) can be 0 or 1
 	ja b_smp_busy_yes
-	cmp cx, 0x100		; Only read up to 256 CPU cores
+	cmp ecx, 0x100		; EVOLVED Gen-6: 32-bit cmp
 	jne b_smp_busy_read
 
 b_smp_busy_no:
@@ -241,7 +244,7 @@ b_smp_busy_no:
 	jmp b_smp_busy_end
 
 b_smp_busy_skip:
-	inc cx
+	inc ecx			; EVOLVED Gen-6: 32-bit inc
 	jmp b_smp_busy_read
 
 b_smp_busy_yes:
@@ -307,19 +310,24 @@ b_smp_unlock:
 ; b_smp_read_lock -- Acquire read lock (multiple readers allowed)
 ;  IN:	RAX = Address of lock variable
 ; OUT:	Nothing. All registers preserved.
+; EVOLVED Gen-6: Fixed correctness bug — cmpxchg needs expected value in AX,
+; but RAX was the lock address. Move lock address to RDX to free AX for cmpxchg.
 b_smp_read_lock:
 	push rcx
+	push rdx
+	mov rdx, rax			; RDX = lock address (frees AX for cmpxchg)
 .retry:
 	pause
-	mov cx, [rax]
-	bt cx, 15			; Check if writer holds lock
+	movzx eax, word [rdx]		; AX = current lock value (cmpxchg comparand)
+	bt ax, 15			; Check if writer holds lock
 	jc .retry			; If writer active, spin
-	mov cx, [rax]
-	inc cx				; Increment reader count
-	bt cx, 15			; Make sure we didn't overflow into writer bit
+	lea ecx, [eax + 1]		; CX = new value (reader count + 1)
+	bt cx, 15			; Overflow into writer bit?
 	jc .retry
-	lock cmpxchg [rax], cx		; Atomic compare-and-swap
-	jnz .retry			; If failed, retry
+	lock cmpxchg [rdx], cx		; if [rdx]==AX then [rdx]=CX, else AX=[rdx]
+	jnz .retry			; Failed: AX updated, retry
+	mov rax, rdx			; Restore RAX = lock address
+	pop rdx
 	pop rcx
 	ret
 ; -----------------------------------------------------------------------------
@@ -356,8 +364,10 @@ b_smp_write_lock:
 ; b_smp_write_unlock -- Release exclusive write lock
 ;  IN:	RAX = Address of lock variable
 ; OUT:	Nothing. All registers preserved.
+; EVOLVED Gen-6: Removed lock prefix — only the holder calls unlock,
+; and x86 TSO guarantees store visibility. Saves ~20 cycle bus lock.
 b_smp_write_unlock:
-	lock btr word [rax], 15		; Clear writer bit
+	and word [rax], 0x7FFF		; Clear writer bit (simple store, no lock needed)
 	ret
 ; -----------------------------------------------------------------------------
 

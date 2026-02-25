@@ -7,6 +7,7 @@
 
 
 ; -----------------------------------------------------------------------------
+%ifndef NO_GPU
 init_gpu:
 	; Output progress via serial
 	mov esi, msg_gpu_init
@@ -42,14 +43,17 @@ init_gpu_no_gpu:
 	mov esi, msg_ok
 	call os_debug_string
 	ret
-; -----------------------------------------------------------------------------
-
 
 ; Strings
 msg_gpu_init:	db 13, 10, 'gpu', 0
 msg_gpu_vram:	db ' vram:', 0
 msg_gpu_mb:	db 'MB', 0
 msg_gpu_chip:	db ' chip:', 0
+
+%else
+init_gpu:
+	ret
+%endif
 
 
 ; =============================================================================

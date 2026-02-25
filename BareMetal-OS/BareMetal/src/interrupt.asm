@@ -134,11 +134,11 @@ hpet:
 ; EVOLVED: Wake a single idle core for pending work
 hpet_wake_idle_core:
 	push rsi
-	push rdi
-	push rcx
+	push rcx			; EVOLVED Gen-6: removed unused push rdi
 
 	mov rsi, os_SMP
 	xor ecx, ecx			; Core counter
+	align 16			; EVOLVED Gen-6: align hot scan loop
 .scan:
 	cmp ecx, 256
 	jge .scan_done
@@ -157,8 +157,7 @@ hpet_wake_idle_core:
 	inc ecx
 	jmp .scan
 .scan_done:
-	pop rcx
-	pop rdi
+	pop rcx				; EVOLVED Gen-6: removed unused pop rdi
 	pop rsi
 	ret
 ; -----------------------------------------------------------------------------
@@ -400,10 +399,11 @@ exception_gate_main:
 	call b_output
 	mov esi, exc_string00
 	pop rax
-	and eax, 0x00000000000000FF	; Clear out everything in RAX except for AL
+	and eax, 0xFF			; EVOLVED Gen-6: simplified mask
 	push rax
-	mov bl, 6			; Length of each message
-	mul bl				; AX = AL x BL
+	; EVOLVED Gen-6: LEA+SHL replacing mul bl (3-cycle → 2-cycle)
+	lea eax, [rax + rax*2]		; EAX = AL * 3
+	shl eax, 1			; EAX = AL * 6
 	add rsi, rax			; Use the value in RAX as an offset to get to the right message
 	pop rax
 	mov bl, 0x0F

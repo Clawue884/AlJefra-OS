@@ -29,11 +29,9 @@ os_bus_read:
 	cmp byte [os_BusEnabled], 2	; Check if PCIe was enabled
 	jne os_bus_read_pci		; If not, fall back to PCI
 os_bus_read_pcie:
-	call os_pcie_read
-	ret
+	jmp os_pcie_read		; EVOLVED Gen-6: tail-call, saves call+ret overhead
 os_bus_read_pci:
-	call os_pci_read
-	ret
+	jmp os_pci_read			; EVOLVED Gen-6: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -46,11 +44,9 @@ os_bus_write:
 	cmp byte [os_BusEnabled], 2	; Check if PCIe was enabled
 	jne os_bus_write_pci		; If not, fall back to PCI
 os_bus_write_pcie:
-	call os_pcie_write
-	ret
+	jmp os_pcie_write		; EVOLVED Gen-6: tail-call
 os_bus_write_pci:
-	call os_pci_write
-	ret
+	jmp os_pci_write		; EVOLVED Gen-6: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -79,8 +75,8 @@ os_bus_read_bar:
 	xor eax, eax
 	xor ebx, ebx
 	call os_bus_read
-	xchg eax, ebx			; Exchange the result to EBX (low 32 bits of base)
-	not eax				; Flip all bits in EAX (which is currently 0 after XCHG with EBX)
+	mov ebx, eax			; EVOLVED Gen-6: explicit mov replacing 3-uop xchg
+	mov eax, 0xFFFFFFFF		; All bits set for BAR sizing
 	call os_bus_write		; Write 0xFFFFFFFF to the BAR
 	call os_bus_read		; Read the low 32 bits of the length
 	push rax
@@ -164,7 +160,7 @@ os_bus_cap_check_next:
 	je os_bus_cap_check_done
 os_bus_cap_check_next_offset:
 	shr eax, 8			; Shift pointer to AL
-	cmp al, 0x00			; End of linked list?
+	test al, al			; EVOLVED Gen-6: test replacing cmp-0
 	jne os_bus_cap_check_next	; If not, continue reading, otherwise fall through to error
 
 os_bus_cap_check_error:

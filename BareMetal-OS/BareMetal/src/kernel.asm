@@ -12,7 +12,11 @@ DEFAULT ABS
 
 %DEFINE BAREMETAL_VER 'AlJefra OS v1.0.0 (GPU-Evolved)', 13, 'x86-64 Exokernel | GPU Engine: RTX 5090', 13, 0
 %DEFINE BAREMETAL_API_VER 1
-KERNELSIZE equ 64 * 1024		; Pad the kernel to this length (expanded for GPU engine)
+%ifdef NO_GPU
+KERNELSIZE equ 20 * 1024		; Standard kernel size without GPU
+%else
+KERNELSIZE equ 64 * 1024		; Expanded for GPU engine
+%endif
 
 
 kernel_start:
@@ -127,7 +131,7 @@ bsp:
 ap_check:
 	call b_smp_get			; Check for an assigned workload
 	and al, 0xF0			; Clear the flags
-	cmp rax, 0			; If 0 then there is nothing to do
+	test rax, rax			; EVOLVED Gen-6: test replacing cmp-0
 	jne ap_process
 
 	; EVOLVED: Before halting, check the AI scheduler work queue

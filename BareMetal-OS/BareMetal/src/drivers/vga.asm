@@ -268,7 +268,7 @@ vga_output_chars:
 	cld				; Clear the direction flag.. we want to increment through the string
 
 vga_output_chars_nextchar:
-	cmp rcx, 0
+	test rcx, rcx			; EVOLVED Gen-6: test replacing cmp-0
 	jz vga_output_chars_done
 	dec rcx
 	lodsb				; Get char from string and store in AL

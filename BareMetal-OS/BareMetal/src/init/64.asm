@@ -130,8 +130,8 @@ init_64_lfb:
 %ifndef NO_LFB
 	; Check if LFB was enabled by Pure64
 	mov rax, [os_screen_lfb]
-	cmp rax, 0
-	je init_64_vga
+	test rax, rax			; EVOLVED Gen-6: test replacing cmp-0
+	jz init_64_vga
 	call lfb_init			; Initialize LFB for text output
 %endif
 init_64_vga:

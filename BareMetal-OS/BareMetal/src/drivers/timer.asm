@@ -30,7 +30,7 @@ os_timer_init:
 os_timer_init_phys:
 	; Verify there is a valid HPET address
 	mov rax, [os_HPET_Address]
-	cmp rax, 0
+	test rax, rax			; EVOLVED Gen-6: test replacing cmp-0
 	jz os_timer_init_error
 	; Initialize the HPET
 	call init_timer_hpet

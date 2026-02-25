@@ -103,7 +103,7 @@ b_evolve_bench_gpu:
 	cmp byte [os_GPUEnabled], 1
 	jne b_evolve_bench_gpu_none
 
-	call gpu_benchmark
+	call b_gpu_benchmark
 	mov rdx, rax
 	; Score = inverse of latency
 	mov rbx, 1000000

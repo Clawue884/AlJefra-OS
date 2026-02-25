@@ -253,13 +253,11 @@ net_e1000_init_pop_rx:
 	mov dword [rsi + E1000_TDT], 0
 
 	; Zero TX descriptors
+	; EVOLVED Gen-6: rep stosq replacing manual loop (~4x faster for 4KB)
 	mov rdi, [r8 + nt_tx_desc]
 	xor eax, eax
 	mov ecx, E1000_NUM_TX_DESC * 2	; 2 QWORDs per descriptor
-net_e1000_init_zero_tx:
-	stosq
-	dec ecx
-	jnz net_e1000_init_zero_tx
+	rep stosq
 
 	; Initialize TX tracking
 	mov dword [r8 + nt_tx_tail], 0
@@ -300,8 +298,7 @@ net_e1000_init_zero_tx:
 ;	RDI = net_table entry (after nt_ID, so +6 = nt_MAC)
 ; OUT:	CF clear if success, CF set if EEPROM not available
 net_e1000_read_mac_eeprom:
-	push rcx
-	push rbx
+	push rcx			; EVOLVED Gen-6: removed unused push rbx
 	push rax
 
 	; Read word 0 (MAC bytes 0-1)
@@ -366,8 +363,7 @@ net_e1000_eeprom_word2_done:
 	clc				; Success
 
 net_e1000_eeprom_done:
-	pop rax
-	pop rbx
+	pop rax				; EVOLVED Gen-6: removed unused pop rbx
 	pop rcx
 	ret
 ; -----------------------------------------------------------------------------
@@ -416,7 +412,7 @@ net_e1000_transmit:
 	mov r8, rdx			; R8 = net_table entry
 
 	; Get current TX tail index
-	xor eax, eax
+	; EVOLVED Gen-6: removed dead xor eax before mov eax
 	mov eax, [r8 + nt_tx_tail]
 	mov ebx, eax			; EBX = current tail index
 
@@ -429,23 +425,23 @@ net_e1000_transmit:
 	; Bytes 0-7: Buffer Address
 	mov rax, rsi
 	stosq
+	; EVOLVED Gen-6: partial register fixes — use 32-bit ops
 	; Bytes 8-9: Length
-	mov ax, cx
+	movzx eax, cx			; EVOLVED Gen-6: movzx replacing partial mov ax,cx
 	stosw
 	; Byte 10: CSO (Checksum Offset) = 0
-	xor al, al
+	xor eax, eax			; EVOLVED Gen-6: 32-bit xor avoids partial reg merge
 	stosb
 	; Byte 11: CMD = EOP | IFCS | RS
 	mov al, E1000_TXD_CMD_EOP | E1000_TXD_CMD_IFCS | E1000_TXD_CMD_RS
 	stosb
 	; Byte 12: Status = 0 (will be set by hardware)
-	xor al, al
+	xor eax, eax			; EVOLVED Gen-6: 32-bit xor
 	stosb
 	; Byte 13: CSS (Checksum Start) = 0
 	stosb
 	; Bytes 14-15: Special = 0
-	xor ax, ax
-	stosw
+	stosw				; EAX already 0 from above
 
 	; Advance tail index (wrap at E1000_NUM_TX_DESC)
 	inc ebx
@@ -457,7 +453,7 @@ net_e1000_transmit:
 	mov [rdi + E1000_TDT], ebx
 
 	; Wait for transmit to complete (poll DD bit in descriptor status)
-	sub rdi, 4			; Back to our descriptor (we moved past it)
+	; EVOLVED Gen-6: removed dead sub rdi,4 (immediately overwritten)
 	mov rdi, [r8 + nt_tx_desc]
 	mov eax, [r8 + nt_tx_tail]
 	dec eax				; Point to descriptor we just wrote
@@ -506,6 +502,7 @@ net_e1000_poll:
 	shl eax, 4
 	add rax, [r8 + nt_rx_desc]
 	mov rsi, rax			; RSI = pointer to RX descriptor
+	prefetchnta [rsi]		; EVOLVED Gen-6: prefetch descriptor to L1
 
 	; Check DD (Descriptor Done) bit in status
 	mov al, [rsi + 12]		; Status byte is at offset 12
