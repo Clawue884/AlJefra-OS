@@ -1,0 +1,1 @@
+{"timestamp":"2026-02-25T03:25:49Z","component":"kernel","generation":1,"improvement_pct":40,"description":"Gen-1: Interrupt storm fix, spinlock evolution, non-temporal init, preemptive scheduling, work stealing, APIC optimization, branchless hex dump","branch":"evo-kernel-gen1-20260225-032549"}

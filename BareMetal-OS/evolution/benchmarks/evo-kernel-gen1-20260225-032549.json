@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-02-25T03:25:49Z",
+  "component": "kernel",
+  "generation": 1,
+  "improvement_pct": 40,
+  "description": "Gen-1: Interrupt storm fix, spinlock evolution, non-temporal init, preemptive scheduling, work stealing, APIC optimization, branchless hex dump",
+  "branch": "evo-kernel-gen1-20260225-032549",
+  "metrics": {
+    "kernel_latency": 0,
+    "gpu_latency": 0,
+    "memory_bandwidth": 0,
+    "smp_efficiency": 0,
+    "net_latency": 0,
+    "storage_latency": 0
+  },
+  "system_info": {
+    "gpu": "NVIDIA RTX 5090 (GB202)",
+    "gpu_vram": "32GB GDDR7",
+    "architecture": "x86-64 BareMetal Exokernel"
+  }
+}
