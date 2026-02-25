@@ -35,3 +35,5 @@ This document tracks all breakthroughs achieved through GPU-accelerated self-evo
 
 | # | Timestamp | Component | Generation | Improvement | Branch |
 |---|-----------|-----------|------------|-------------|--------|
+| 1 | 2026-02-25T03:25:49Z | kernel | 1 | +40% | `evo-kernel-gen1-20260225-032549` |
+| 2 | 2026-02-25T03:36:00Z | drivers | 1 | +35% | `evo-drivers-gen1-20260225-033600` |

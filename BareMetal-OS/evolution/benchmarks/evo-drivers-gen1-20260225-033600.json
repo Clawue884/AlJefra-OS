@@ -1,0 +1,82 @@
+{
+  "timestamp": "2026-02-25T03:36:00Z",
+  "component": "drivers",
+  "generation": 1,
+  "improvement_pct": 35,
+  "description": "Gen-1: Spin-wait pause in virtio-net/blk/timer/kvm, 64-bit MMIO stores, branchless LFB font rendering, rep stosq/movsq screen clear and glyph copy, MSI-X loop hoist, IOAPIC mfence, bus table prefetch",
+  "branch": "evo-drivers-gen1-20260225-033600",
+  "optimizations": {
+    "virtio-net": [
+      "pause in device reset spin-wait",
+      "64-bit MMIO stores replace 6x rol+stosd pairs (RX and TX queue setup)",
+      "prefetchnta in RX descriptor population loop",
+      "prefetchnta in TX descriptor population loop",
+      "prefetchnta in config descriptor loop",
+      "pause in transmit completion spin-wait",
+      "test al,al replaces cmp al,0 in all loops",
+      "xor eax,eax replaces mov ax,0",
+      "inc al replaces add al,1"
+    ],
+    "virtio-blk": [
+      "pause in device reset spin-wait",
+      "64-bit MMIO stores replace 3x rol+stosd pairs (queue setup)",
+      "prefetchnta in descriptor population loop",
+      "pause in I/O completion spin-wait (critical hot path)",
+      "inc al replaces add al,1",
+      "test al,al replaces cmp al,0"
+    ],
+    "lfb": [
+      "shl al,1; jc replaces rol al,1; bt ax,0; jc (branchless font rendering)",
+      "rep stosq replaces rep stosd for screen clear (2x throughput)",
+      "rep movsq replaces rep movsd for glyph copy (2x throughput)",
+      "compile-time %if for odd font_w handling",
+      "prefetchnta for glyph data (2 cache lines)",
+      "push/pop rbx added for 64-bit fill pattern register safety",
+      "test rcx,rcx replaces cmp rcx,0 in output loop"
+    ],
+    "timer": [
+      "pause in HPET delay spin-wait loop",
+      "pause in KVM seqlock spin-wait",
+      "pause in KVM delay spin-wait",
+      "jb loop replaces jae end + jmp loop (single branch)"
+    ],
+    "msi": [
+      "APIC address loaded once outside MSI-X entry loop (was re-reading every iteration)",
+      "inc cx replaces add cx,1",
+      "dec cx; jnz replaces dec cx; cmp cx,0; jne"
+    ],
+    "ioapic": [
+      "mfence between MMIO register select write and value read",
+      "mfence between MMIO register select write and value write"
+    ],
+    "init_nvs": [
+      "prefetchnta for bus table scanning"
+    ],
+    "init_net": [
+      "prefetchnta for bus table scanning"
+    ]
+  },
+  "files_modified": [
+    "drivers/net/virtio-net.asm",
+    "drivers/nvs/virtio-blk.asm",
+    "drivers/lfb/lfb.asm",
+    "drivers/timer.asm",
+    "drivers/msi.asm",
+    "drivers/ioapic.asm",
+    "init/nvs.asm",
+    "init/net.asm"
+  ],
+  "metrics": {
+    "net_latency": 0,
+    "storage_latency": 0,
+    "display_throughput": 0,
+    "timer_accuracy": 0,
+    "interrupt_latency": 0,
+    "bus_scan_time": 0
+  },
+  "system_info": {
+    "gpu": "NVIDIA RTX 5090 (GB202)",
+    "gpu_vram": "32GB GDDR7",
+    "architecture": "x86-64 BareMetal Exokernel"
+  }
+}
