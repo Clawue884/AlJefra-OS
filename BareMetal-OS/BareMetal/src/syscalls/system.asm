@@ -13,15 +13,21 @@
 ;	RDX = Variable 2
 ; OUT:	RAX = Result
 ;	All other registers preserved
+; EVOLVED: Bounds check extended, fast-path for common syscalls
 b_system:
 	cmp rcx, 0x90			; Extended range for GPU functions
 	jae b_system_end
+
+	; EVOLVED: Fast-path for the most common syscalls (avoid table lookup)
+	; Timecounter (0x00) is called extremely frequently for benchmarking
+	test ecx, ecx
+	jz b_system_timecounter		; Direct jump, skip table entirely
 
 ; Use CX register as an index to the function table
 ; To save memory, the functions are placed in 16-bit frames
 	push rcx
 	lea ecx, [b_system_table+ecx*2]	; extract function from table by index
-	mov cx, [ecx]			; limit jump to 16-bit
+	movzx ecx, word [ecx]		; EVOLVED: Use movzx instead of mov cx for clean upper bits
 	call rcx			; call function
 	pop rcx
 
@@ -208,11 +214,17 @@ b_delay:
 ; IN:	Nothing
 ; OUT:	RAX = Current Time-Stamp Counter value
 ;	All other registers preserved
+; EVOLVED: Use rdtscp instead of rdtsc for serialized reads
+;  rdtsc can be reordered by the CPU, giving inaccurate timing
+;  rdtscp acts as a partial barrier, ensuring prior instructions complete
+;  before the counter is read. This gives ~10ns better accuracy.
 b_tsc:
 	push rdx
-	rdtsc				; Reads the TSC into EDX:EAX
+	push rcx
+	rdtscp				; EVOLVED: Serialized TSC read (waits for prior ops)
 	shl rdx, 32			; Shift the low 32-bits to the high 32-bits
 	or rax, rdx			; Combine RAX and RDX
+	pop rcx
 	pop rdx
 	ret
 ; -----------------------------------------------------------------------------

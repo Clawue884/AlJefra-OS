@@ -180,7 +180,9 @@ keyboard_done:
 
 ; -----------------------------------------------------------------------------
 ; ps2_read_data - Read data from PS/2 port when it is ready
+; EVOLVED: Added pause to reduce power in polling loop
 ps2_read_data:
+	pause				; EVOLVED: CPU hint for spin-wait
 	in al, PS2_STATUS		; Read Status Register
 	bt ax, 0			; Check if Output buffer is full
 	jnc ps2_read_data
@@ -208,6 +210,7 @@ ps2_send_cmd:
 ps2_wait:
 	push rax
 ps2_wait_read:
+	pause				; EVOLVED: CPU hint for spin-wait
 	in al, PS2_STATUS		; Read Status Register
 	bt ax, 1			; Check if Input buffer is full
 	jc ps2_wait_read
@@ -234,6 +237,7 @@ ps2_flush:
 ps2wait:
 	mov ecx, 1000
 ps2wait_loop:
+	pause				; EVOLVED: CPU hint for spin-wait
 	in al, PS2_STATUS
 	and al, dl
 	jnz ps2wait_done

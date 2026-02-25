@@ -130,9 +130,20 @@ ap_check:
 	cmp rax, 0			; If 0 then there is nothing to do
 	jne ap_process
 
+	; EVOLVED: Before halting, check the AI scheduler work queue
+	; This enables work-stealing: idle cores pull work from the shared queue
+	cmp dword [ai_sched_count], 0
+	jne ap_check_scheduler
+
 ap_halt:				; Halt until a wakeup call is received
 	hlt
 	jmp ap_check			; Core will jump to ap_check when it wakes up
+
+ap_check_scheduler:
+	; EVOLVED: Try to pull work from the AI scheduler queue
+	; This is the work-stealing path - idle cores become productive
+	call ai_sched_dispatch_one
+	jmp ap_check			; Re-check after dispatch attempt
 
 ap_process:
 	mov rcx, 1			; Set the active flag

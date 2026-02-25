@@ -29,20 +29,35 @@ interrupt_gate:				; handler for all other interrupts
 ; -----------------------------------------------------------------------------
 ; Keyboard interrupt. IRQ 0x01, INT 0x21
 ; This IRQ runs whenever there is input on the keyboard
+; EVOLVED: Targeted wakeup instead of broadcast storm
 align 8
 int_keyboard:
 	push rcx
 	push rax
+	push rbx
 
 	call ps2_keyboard_interrupt	; Call keyboard interrupt code in PS/2 driver
 
-	; Acknowledge the IRQ
+	; Acknowledge the IRQ (do this FIRST to reduce latency)
 	mov ecx, APIC_EOI
 	xor eax, eax
 	call os_apic_write
 
-	call b_smp_wakeup_all		; A terrible hack
+	; EVOLVED: Only wake the BSP or a single core waiting for input
+	; instead of broadcasting to ALL cores (was causing N-way cache
+	; invalidation on every keystroke)
+	xor eax, eax
+	mov al, [os_BSP]		; Wake only the BSP
+	call b_smp_wakeup
 
+	; Check if a keyboard callback is registered
+	mov rax, [os_KeyboardCallback]
+	test rax, rax
+	jz .no_callback
+	call rax			; Call the registered handler
+.no_callback:
+
+	pop rbx
 	pop rax
 	pop rcx
 	iretq
@@ -52,19 +67,23 @@ int_keyboard:
 ; -----------------------------------------------------------------------------
 ; Serial interrupt. IRQ 0x04, INT 0x24
 ; This IRQ runs whenever there is input on the serial port
+; EVOLVED: Targeted wakeup instead of broadcast storm
 align 8
 int_serial:
 	push rcx
 	push rax
 
-	call serial_interrupt	; Call interrupt code in serial driver
+	call serial_interrupt		; Call interrupt code in serial driver
 
 	; Acknowledge the IRQ
 	mov ecx, APIC_EOI
 	xor eax, eax
 	call os_apic_write
 
-	call b_smp_wakeup_all		; A terrible hack
+	; EVOLVED: Only wake the BSP instead of all cores
+	xor eax, eax
+	mov al, [os_BSP]
+	call b_smp_wakeup
 
 	pop rax
 	pop rcx
@@ -75,18 +94,73 @@ int_serial:
 ; -----------------------------------------------------------------------------
 ; HPET Timer 0 interrupt
 ; This IRQ runs whenever HPET Timer 0 expires
+; EVOLVED: Now drives preemptive work queue checking and load balancing
 align 8
 hpet:
 	push rcx
 	push rax
+	push rbx
 
+	; Acknowledge the IRQ first (reduce interrupt latency)
 	mov ecx, APIC_EOI
 	xor eax, eax
 	call os_apic_write
 
+	; EVOLVED: Increment system tick counter for scheduling
+	lock inc qword [os_hpet_ticks]
+
+	; EVOLVED: Check if any AP has pending work in the AI scheduler queue
+	; This enables preemptive task rotation every timer tick
+	cmp dword [ai_sched_count], 0
+	je .no_pending_work
+
+	; Wake idle cores that have pending work
+	; Only wake one core per tick to avoid thundering herd
+	call hpet_wake_idle_core
+
+.no_pending_work:
+	; Call clock callback if registered
+	mov rax, [os_ClockCallback]
+	test rax, rax
+	jz .no_callback
+	call rax
+.no_callback:
+
+	pop rbx
 	pop rax
 	pop rcx
 	iretq
+
+; EVOLVED: Wake a single idle core for pending work
+hpet_wake_idle_core:
+	push rsi
+	push rdi
+	push rcx
+
+	mov rsi, os_SMP
+	xor ecx, ecx			; Core counter
+.scan:
+	cmp ecx, 256
+	jge .scan_done
+	mov rax, [rsi]
+	bt ax, 0			; Check present flag
+	jnc .next
+	and rax, 0xFFFFFFFFFFFFFFF0	; Clear flags
+	test rax, rax			; Is core idle (no code address)?
+	jnz .next			; Skip busy cores
+	; Found idle core - wake it
+	mov eax, ecx
+	call b_smp_wakeup
+	jmp .scan_done
+.next:
+	add rsi, 8
+	inc ecx
+	jmp .scan
+.scan_done:
+	pop rcx
+	pop rdi
+	pop rsi
+	ret
 ; -----------------------------------------------------------------------------
 
 

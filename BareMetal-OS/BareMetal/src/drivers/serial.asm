@@ -58,11 +58,11 @@ serial_send:
 	push rax
 
 serial_send_wait:
+	pause				; EVOLVED: Reduce power in spin-wait
 	mov dx, COM_PORT_LINE_STATUS
 	in al, dx
-	and al, 0x20			; Bit 5
-	cmp al, 0
-	je serial_send_wait
+	bt ax, 5			; EVOLVED: Use bt instead of and+cmp (1 instruction vs 2)
+	jnc serial_send_wait
 
 	; Restore the byte and write to the serial port
 	pop rax

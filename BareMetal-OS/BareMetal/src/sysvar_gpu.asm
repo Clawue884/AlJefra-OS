@@ -36,6 +36,9 @@ os_GPU_ComputeReady:	equ os_SystemVariables + 0x20E1	; 1 if compute engine is re
 ; GPU VRAM Bitmap (1 bit per 2MB page, supports up to 32GB = 2048 bytes)
 os_GPU_VRAM_Bitmap:	equ os_SystemVariables + 0x3000	; 0x3000 -> 0x37FF (2KB)
 
+; HPET tick counter (incremented by timer interrupt for preemptive scheduling)
+os_hpet_ticks:		equ os_SystemVariables + 0x3800
+
 ; Evolution Engine Variables - DQ
 os_Evolve_Generation:	equ os_SystemVariables + 0x4000	; Current evolution generation
 os_Evolve_BestFitness:	equ os_SystemVariables + 0x4008	; Best fitness score (float64)

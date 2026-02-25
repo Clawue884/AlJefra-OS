@@ -102,11 +102,14 @@ b_net_tx:
 	add edx, net_table		; Add offset to net_table
 
 	; Lock the network interface so only one send can happen at a time
+	; EVOLVED: Use test-and-test-and-set lock (from evolved smp.asm)
 	mov rax, rdx
 	add rax, nt_lock
 	call b_smp_lock
 
 	; Calculate where in physical memory the data should be read from
+	; EVOLVED: Prefetch next cache line of packet data while translating
+	prefetchnta [rsi+64]		; EVOLVED: Prefetch ahead for DMA
 	xchg rax, rsi
 	call os_virt_to_phys
 	xchg rax, rsi
@@ -119,9 +122,9 @@ b_net_tx:
 	add rax, nt_lock
 	call b_smp_unlock
 
-	; Increment interface counters
-	inc qword [rdx+nt_tx_packets]
-	add qword [rdx+nt_tx_bytes], rcx
+	; EVOLVED: Use lock-free atomic increments for counters (no lock needed)
+	lock inc qword [rdx+nt_tx_packets]
+	lock add qword [rdx+nt_tx_bytes], rcx
 
 b_net_tx_fail:
 	pop rax
@@ -159,9 +162,9 @@ b_net_rx:
 	cmp cx, 0			; Check if there was data
 	je b_net_rx_end			; If not, don't increment counters
 
-	; Increment interface counters
-	inc qword [rdx+nt_rx_packets]
-	add qword [rdx+nt_rx_bytes], rcx
+	; EVOLVED: Use lock-free atomic increments for counters
+	lock inc qword [rdx+nt_rx_packets]
+	lock add qword [rdx+nt_rx_bytes], rcx
 
 b_net_rx_end:
 	pop rax

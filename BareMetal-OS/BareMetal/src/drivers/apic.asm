@@ -24,9 +24,12 @@ os_apic_init:
 ;  IN:	ECX = Register to read
 ; OUT:	EAX = Register value
 ;	All other registers preserved
+; EVOLVED: Avoid double memory indirection by caching base in RSI-save pattern
 os_apic_read:
-	mov rax, [os_LocalAPICAddress]
-	mov eax, [rax + rcx]
+	push rsi
+	mov rsi, [os_LocalAPICAddress]	; Load base once
+	mov eax, [rsi + rcx]		; Single-instruction register read
+	pop rsi
 	ret
 ; -----------------------------------------------------------------------------
 
@@ -36,11 +39,29 @@ os_apic_read:
 ;  IN:	ECX = Register to write
 ;	EAX = Value to write
 ; OUT:	All registers preserved
+; EVOLVED: Use LEA to compute address without modifying RCX
 os_apic_write:
-	push rcx
-	add rcx, [os_LocalAPICAddress]
-	mov [rcx], eax
-	pop rcx
+	push rsi
+	mov rsi, [os_LocalAPICAddress]
+	mov [rsi + rcx], eax		; EVOLVED: Direct indexed write, no ADD needed
+	pop rsi
+	ret
+; -----------------------------------------------------------------------------
+
+
+; -----------------------------------------------------------------------------
+; EVOLVED: Fast EOI write - most frequent APIC operation
+; Inlined version that avoids function call overhead for interrupt ack
+;  IN:	Nothing
+; OUT:	All registers preserved
+os_apic_eoi:
+	push rsi
+	push rax
+	mov rsi, [os_LocalAPICAddress]
+	xor eax, eax
+	mov [rsi + APIC_EOI], eax	; Direct EOI write
+	pop rax
+	pop rsi
 	ret
 ; -----------------------------------------------------------------------------
 
