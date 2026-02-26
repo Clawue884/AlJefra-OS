@@ -34,7 +34,7 @@ else ifeq ($(ARCH),aarch64)
     LD      = $(CROSS_PREFIX)ld
     OBJCOPY = $(CROSS_PREFIX)objcopy
     ASFLAGS =
-    CFLAGS  = -march=armv8-a -mgeneral-regs-only
+    CFLAGS  = -march=armv8-a -mgeneral-regs-only -mstrict-align
     LDFLAGS = -T arch/aarch64/linker.ld -nostdlib
     ARCH_DIR = arch/aarch64
     KERNEL_BIN = $(BIN_DIR)/kernel_aarch64.bin

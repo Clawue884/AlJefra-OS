@@ -204,20 +204,31 @@ hal_status_t hal_mmu_init(void)
         L0_TABLE[i] = 0;
     pt_pool_next = 1;  /* Pool[0] is L0 */
 
-    /* Identity map first 2GB as normal memory (RAM) */
-    for (uint64_t addr = 0; addr < 0x80000000ULL; addr += (2 * 1024 * 1024)) {
-        map_2mb_block(addr, PTE_ATTR_NORMAL | PTE_AP_RW_EL1);
+    /* QEMU virt memory map:
+     *   0x00000000 - 0x3FFFFFFF: I/O devices (flash, GIC, UART, virtio, PCIe window)
+     *   0x40000000 - RAM_END:    RAM (size determined by -m flag, default 256MB)
+     *   0x4010000000:            PCIe ECAM (256MB)
+     *
+     * We identity-map everything the kernel and drivers need access to. */
+
+    /* Identity map device I/O region: 0x00000000 - 0x3FFFFFFF (1GB) */
+    for (uint64_t addr = 0; addr < 0x40000000ULL; addr += (2 * 1024 * 1024)) {
+        map_2mb_block(addr, PTE_ATTR_DEVICE | PTE_AP_RW_EL1 | PTE_PXN | PTE_UXN);
     }
 
-    /* Identity map 2GB-4GB as device memory (MMIO, GIC, UART, PCIe) */
-    for (uint64_t addr = 0x80000000ULL; addr < 0x100000000ULL; addr += (2 * 1024 * 1024)) {
-        map_2mb_block(addr, PTE_ATTR_DEVICE | PTE_AP_RW_EL1 | PTE_PXN | PTE_UXN);
+    /* Identity map RAM: 0x40000000 - 0x4FFFFFFF (256MB, sufficient for default config)
+     * For larger -m values, the DTB should be parsed for actual memory size. */
+    for (uint64_t addr = 0x40000000ULL; addr < 0x50000000ULL; addr += (2 * 1024 * 1024)) {
+        map_2mb_block(addr, PTE_ATTR_NORMAL | PTE_AP_RW_EL1);
     }
 
     /* Identity map PCIe ECAM region (0x4010000000, 256MB) as device */
     for (uint64_t addr = 0x4010000000ULL; addr < 0x4020000000ULL; addr += (2 * 1024 * 1024)) {
         map_2mb_block(addr, PTE_ATTR_DEVICE | PTE_AP_RW_EL1 | PTE_PXN | PTE_UXN);
     }
+
+    /* Identity map PCIe MMIO window at 0x10000000-0x3EFEFFFF (already covered by I/O above)
+     * and high MMIO at 0x8000000000 if needed in the future. */
 
     /* Set MAIR_EL1 */
     write_mair_el1(MAIR_VALUE);
@@ -240,16 +251,20 @@ hal_status_t hal_mmu_init(void)
     sctlr |= (1ULL << 12);  /* I: Instruction cache enable */
     write_sctlr_el1(sctlr);
 
-    /* Initialize page allocator: mark first 4GB as usable */
-    total_ram_bytes = 2ULL * 1024 * 1024 * 1024;  /* 2GB RAM default */
+    /* Initialize page allocator.
+     * QEMU virt default: 256MB at 0x40000000.
+     * TODO: Parse DTB memory node for actual RAM size. */
+    total_ram_bytes = 256ULL * 1024 * 1024;  /* 256MB RAM default */
     free_ram_bytes  = total_ram_bytes;
 
     /* Zero bitmap */
     for (uint32_t i = 0; i < PHYS_PAGE_BITMAP_SIZE; i++)
         page_bitmap[i] = 0;
 
-    /* Reserve first 64MB for kernel + page tables + DMA pool */
-    uint64_t reserved_pages = (64 * 1024 * 1024) / PAGE_SIZE;
+    /* Reserve first 32MB of RAM for kernel image + BSS + stacks + page tables.
+     * The kernel is loaded at 0x40000000 and BSS+stacks extend ~18MB beyond.
+     * We reserve 32MB (8192 pages) to be safe. */
+    uint64_t reserved_pages = (32 * 1024 * 1024) / PAGE_SIZE;
     for (uint64_t i = 0; i < reserved_pages; i++) {
         bitmap_set(i);
         free_ram_bytes -= PAGE_SIZE;
@@ -353,7 +368,7 @@ uint32_t hal_mmu_get_memory_map(hal_mem_region_t *regions, uint32_t max)
 
     if (count < max) {
         regions[count].base = 0x40000000ULL;
-        regions[count].size = 0x80000000ULL;  /* 2GB RAM at 1GB offset */
+        regions[count].size = 0x10000000ULL;  /* 256MB RAM at 1GB offset */
         regions[count].type = 1;  /* usable */
         count++;
     }

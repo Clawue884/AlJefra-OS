@@ -41,7 +41,6 @@ hal_status_t hal_init(void)
     hal_console_puts("AlJefra OS -- AArch64 HAL Init\n");
 
     /* 2. CPU: detect features, enable FPU/NEON */
-    hal_console_puts("[HAL] CPU init...\n");
     st = hal_cpu_init();
     if (st != HAL_OK) {
         hal_console_puts("[HAL] CPU init failed\n");

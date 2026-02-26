@@ -200,45 +200,34 @@ static uint32_t detect_features(void)
 
 hal_status_t hal_cpu_init(void)
 {
-    hal_console_puts("[cpu] reading MIDR...\n");
     uint64_t midr = read_midr_el1();
 
     /* Decode processor identification */
-    hal_console_puts("[cpu] decoding MIDR...\n");
     decode_midr(midr);
 
     /* Enable FPU / NEON / SVE access at EL1:
      * CPACR_EL1.FPEN [21:20] = 0b11 (no trapping of FP/NEON at EL0/EL1)
      * CPACR_EL1.ZEN  [17:16] = 0b11 (no trapping of SVE at EL0/EL1, if SVE) */
-    hal_console_puts("[cpu] enabling FPU...\n");
     uint64_t cpacr = read_cpacr_el1();
     cpacr |= (3ULL << 20);  /* FPEN = 0b11 */
     cpacr |= (3ULL << 16);  /* ZEN  = 0b11 (harmless if SVE not present) */
     write_cpacr_el1(cpacr);
 
     /* Detect features */
-    hal_console_puts("[cpu] detecting features...\n");
     cpu_info.features = detect_features();
 
     /* Cache line size: read CTR_EL0 DminLine [19:16] */
-    hal_console_puts("[cpu] reading CTR...\n");
     uint64_t ctr;
     __asm__ volatile("mrs %0, CTR_EL0" : "=r"(ctr));
-    hal_console_puts("[cpu] CTR read done\n");
     uint32_t dmin_line = (ctr >> 16) & 0xF;
     cpu_info.cache_line_bytes = 4 << dmin_line;  /* encoded as log2 of words */
-    hal_console_puts("[cpu] cache_line set\n");
 
     /* Default: single core until SMP init discovers more */
     cpu_info.cores_physical = 1;
     cpu_info.cores_logical  = 1;
 
-    hal_console_puts("[cpu] cores set\n");
-
     return HAL_OK;
 }
-
-/* Debug: put after cpu_init to track flow */
 
 void hal_cpu_get_info(hal_cpu_info_t *info)
 {

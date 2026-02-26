@@ -62,9 +62,11 @@ _start:
     mov     x0, #(1 << 31)     /* HCR_EL2.RW = 1 */
     msr     HCR_EL2, x0
 
-    /* Disable EL2 trapping of FP/NEON/SVE */
-    mov     x0, #0x33FF
-    msr     CPTR_EL2, x0       /* CPTR_EL2: clear all trap bits */
+    /* Disable EL2 trapping of FP/NEON/SVE.
+     * CPTR_EL2: TFP(bit10)=0 (don't trap FP), TCPAC(bit12)=0 (allow CPACR_EL1),
+     * TTA(bit13)=0 (don't trap trace), bits[9:0] are RES1 on AArch64. */
+    mov     x0, #0x03FF
+    msr     CPTR_EL2, x0
     msr     HSTR_EL2, xzr      /* No hypervisor trap of system registers */
 
     /* Enable virtual counter access at EL1 */
@@ -94,9 +96,14 @@ _start:
 /* At EL1: common setup for BSP                                        */
 /* ------------------------------------------------------------------ */
 .at_el1:
-    /* Disable MMU and caches initially (we'll enable in hal_mmu_init) */
+    /* Disable MMU, caches, and alignment checking initially.
+     * We'll enable MMU and caches in hal_mmu_init.
+     * Alignment checking (A bit) must be OFF because the compiler
+     * may emit unaligned multi-byte stores (e.g. 8-byte store to
+     * a 4-byte-aligned struct field). */
     mrs     x0, SCTLR_EL1
     bic     x0, x0, #(1 << 0)  /* M: MMU off */
+    bic     x0, x0, #(1 << 1)  /* A: Alignment check off */
     bic     x0, x0, #(1 << 2)  /* C: D-cache off */
     bic     x0, x0, #(1 << 12) /* I: I-cache off */
     msr     SCTLR_EL1, x0
@@ -344,11 +351,4 @@ _exc_serror_lower32:
     RESTORE_REGS
     eret
 
-/* ================================================================== */
-/* Data section references                                             */
-/* ================================================================== */
-
-.section .data
-.global _sec_stack_base
-_sec_stack_base:
-    .quad   0       /* Filled in by smp.c or linker */
+/* _sec_stack_base is defined by the linker script (linker.ld) */

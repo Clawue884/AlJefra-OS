@@ -3,7 +3,7 @@
  *
  * Memory layout for QEMU virt machine (-machine virt -kernel):
  *   RAM starts at 0x40000000 (1GB)
- *   Kernel loaded at 0x40000000 by QEMU -kernel
+ *   Kernel loaded at 0x40080000 by QEMU -kernel (512KB offset)
  *
  * Sections:
  *   .text.boot  - Boot code (must be first)
@@ -18,8 +18,8 @@ ENTRY(_start)
 
 MEMORY
 {
-    /* QEMU virt RAM: starts at 0x40000000, up to 256GB */
-    RAM (rwx) : ORIGIN = 0x40000000, LENGTH = 256M
+    /* QEMU virt RAM: starts at 0x40000000; -kernel loads at +0x80000 */
+    RAM (rwx) : ORIGIN = 0x40080000, LENGTH = 255M
 }
 
 PHDRS
@@ -88,6 +88,6 @@ SECTIONS
 }
 
 /* Provide symbols for C code */
-PROVIDE(_start = ORIGIN(RAM));
+PROVIDE(_start = 0x40080000);
 PROVIDE(__bss_start = ADDR(.bss));
 PROVIDE(__bss_end = ADDR(.bss) + SIZEOF(.bss));

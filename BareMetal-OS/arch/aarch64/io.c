@@ -68,7 +68,7 @@ void hal_mmio_barrier(void)
  * On bare-metal with identity mapping, virtual == physical.
  * Aligned to 4KB page boundaries for DMA coherence. */
 
-#define DMA_POOL_BASE   0x10000000ULL   /* 256MB mark -- below kernel */
+#define DMA_POOL_BASE   0x4E000000ULL   /* Near end of 256MB RAM (0x40000000+224MB) */
 #define DMA_POOL_SIZE   (16 * 1024 * 1024)  /* 16MB DMA pool */
 #define DMA_ALIGN       4096
 

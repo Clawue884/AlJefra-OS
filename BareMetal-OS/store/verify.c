@@ -396,7 +396,7 @@ static void fe_add(fe h, const fe f, const fe g)
 static void fe_sub(fe h, const fe f, const fe g)
 {
     /* Add 2*p to avoid underflow before subtraction */
-    h[0] = f[0] - g[0] + 2 * 0x7FFFFFFFFFFFEDLL;
+    h[0] = f[0] - g[0] + 2 * 0x7FFFFFFFFFFEDLL;
     h[1] = f[1] - g[1] + 2 * FE_LIMB_MASK;
     h[2] = f[2] - g[2] + 2 * FE_LIMB_MASK;
     h[3] = f[3] - g[3] + 2 * FE_LIMB_MASK;
@@ -919,11 +919,14 @@ static void ge_p2_dbl(ge_p1p1 *r, const ge_p2 *p)
      *   Z3 = F * G
      */
     fe_sub(H, H, B);  /* H = -A - B = D - B */
-    /* Results (in p1p1 form): X=E, Y=G, Z=F, T=H */
+    /* p1p1 convention: X3 = r->X * r->T, Y3 = r->Y * r->Z,
+     *                  Z3 = r->Z * r->T, T3 = r->X * r->Y
+     * We need: X3=E*F, Y3=G*H, Z3=F*G, T3=E*H
+     * So: r->X=E, r->Y=H, r->Z=G, r->T=F */
     fe_copy(r->X, E);
-    fe_copy(r->Y, G);
-    fe_copy(r->Z, F);
-    fe_copy(r->T, H);
+    fe_copy(r->Y, H);
+    fe_copy(r->Z, G);
+    fe_copy(r->T, F);
 }
 
 /* Point addition: p3 + cached -> p1p1

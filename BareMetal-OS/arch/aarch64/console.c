@@ -228,6 +228,31 @@ void hal_console_printf(const char *fmt, ...)
         }
         fmt++;
 
+        /* Parse optional flags and width: %[0][width][l]<specifier> */
+        int zero_pad = 0;
+        int width = 0;
+        int is_long = 0;
+
+        /* Zero-pad flag */
+        if (*fmt == '0') {
+            zero_pad = 1;
+            fmt++;
+        }
+
+        /* Width (single digit for simplicity) */
+        while (*fmt >= '0' && *fmt <= '9') {
+            width = width * 10 + (*fmt - '0');
+            fmt++;
+        }
+
+        /* Length modifier: 'l' for long */
+        if (*fmt == 'l') {
+            is_long = 1;
+            fmt++;
+        }
+
+        (void)zero_pad; /* TODO: implement zero-padding in print_hex/print_dec */
+
         switch (*fmt) {
         case 'd': {
             int val = va_arg(ap, int);
@@ -235,13 +260,23 @@ void hal_console_printf(const char *fmt, ...)
             break;
         }
         case 'u': {
-            unsigned val = va_arg(ap, unsigned);
-            print_dec(val, 0);
+            if (is_long) {
+                uint64_t val = va_arg(ap, uint64_t);
+                print_dec(val, 0);
+            } else {
+                unsigned val = va_arg(ap, unsigned);
+                print_dec(val, 0);
+            }
             break;
         }
         case 'x': {
-            unsigned val = va_arg(ap, unsigned);
-            print_hex(val, 0);
+            if (is_long) {
+                uint64_t val = va_arg(ap, uint64_t);
+                print_hex(val, width);
+            } else {
+                unsigned val = va_arg(ap, unsigned);
+                print_hex(val, width);
+            }
             break;
         }
         case 'p': {
@@ -261,6 +296,9 @@ void hal_console_printf(const char *fmt, ...)
         case '%':
             hal_console_putc('%');
             break;
+        case '\0':
+            /* Premature end of format string */
+            goto done;
         default:
             hal_console_putc('%');
             hal_console_putc(*fmt);
@@ -268,6 +306,6 @@ void hal_console_printf(const char *fmt, ...)
         }
         fmt++;
     }
-
+done:
     va_end(ap);
 }
