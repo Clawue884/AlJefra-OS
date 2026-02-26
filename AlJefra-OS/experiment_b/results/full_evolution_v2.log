@@ -1,0 +1,76 @@
+=== FULL EVOLUTION CYCLE — Thu Feb 26 06:54:55 PM UTC 2026 ===
+--- Starting io at Thu Feb 26 06:54:55 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d9 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: io ===
+  Region: 0x1005e4 - 0x102ed8 (1139 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. os_bus_read_bar                  51 instrs  [0x0656-0x06e4] (142 bytes)
+     2. os_debug_block                   33 instrs  [0x087f-0x08ea] (107 bytes)
+     3. os_debug_dump_al                 26 instrs  [0x0776-0x07c6] (80 bytes)
+     4. b_smp_set                        25 instrs  [0x0b46-0x0b80] (58 bytes)
+     5. b_net_tx                         23 instrs  [0x0a11-0x0a65] (84 bytes)
+     6. nextchar                         19 instrs  [0x07f1-0x0826] (53 bytes)
+     7. b_net_rx                         16 instrs  [0x0a68-0x0a9b] (51 bytes)
+     8. b_smp_reset                      16 instrs  [0x0a9e-0x0ad2] (52 bytes)
+     9. b_smp_wakeup                     16 instrs  [0x0ad2-0x0b06] (52 bytes)
+    10. os_debug_string                  16 instrs  [0x085c-0x087f] (35 bytes)
+    11. os_debug_dump_mem                15 instrs  [0x07c6-0x07ef] (41 bytes)
+    12. b_smp_wakeup_all                 14 instrs  [0x0b06-0x0b37] (49 bytes)
+    13. b_net_status                     14 instrs  [0x09b8-0x09e4] (44 bytes)
+    14. b_nvs_write_sector               13 instrs  [0x0950-0x0977] (39 bytes)
+    15. b_nvs_read_sector                13 instrs  [0x0914-0x093b] (39 bytes)
+    16. b_net_config                     13 instrs  [0x09e7-0x0a0c] (37 bytes)
+    17. os_debug_block_nextline          12 instrs  [0x08ea-0x0902] (24 bytes)
+    18. b_smp_busy                       11 instrs  [0x0bbb-0x0bd0] (21 bytes)
+    19. b_nvs_write                      10 instrs  [0x093b-0x0950] (21 bytes)
+    20. os_debug_dump_rax                 9 instrs  [0x072b-0x0753] (40 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.29
+
+  Baseline GPU fitness: 59.29
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 64 functions, 542 instructions
+
+  [1/64] os_bus_read_bar                51 instrs [0x0656-0x06e4] → 75K iters
+    [GPU] 65536 threads x 75000 iters = 4915.2M evals | range [0x656-0x6e4]
+    [GPU] Launching 256 blocks x 256 threads...
