@@ -86,7 +86,7 @@ int main(void) {
 
 	// First message
 	println("");
-	println("Sending: \"Hello! I am AlJefra OS, a bare-metal x86-64 OS that just");
+	println("Sending: \"Hello! I am AlJefra OS, a freestanding x86-64 OS that just");
 	println("booted, built its own TCP/IP stack, and connected to you over HTTP.");
 	println("Respond in 2-3 sentences.\"");
 	println("");
@@ -94,7 +94,7 @@ int main(void) {
 	char response[8192];
 	print("Thinking... ");
 	int len = ai_send(&agent,
-		"Hello! I am AlJefra OS, a bare-metal x86-64 operating system. "
+		"Hello! I am AlJefra OS, a freestanding x86-64 operating system. "
 		"I just booted from assembly, built my own TCP/IP stack in C, and "
 		"connected to you over HTTP. Respond in 2-3 sentences.",
 		response, sizeof(response));

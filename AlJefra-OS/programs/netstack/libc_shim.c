@@ -2,7 +2,7 @@
 // AlJefra OS — Freestanding libc shims for BearSSL
 //
 // BearSSL needs memcpy, memset, memmove, memcmp from <string.h>.
-// We provide them here since we're running on bare metal with no libc.
+// We provide them here since we're running on freestanding with no libc.
 // =============================================================================
 
 #include <stddef.h>

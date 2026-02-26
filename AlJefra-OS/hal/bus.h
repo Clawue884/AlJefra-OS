@@ -54,7 +54,7 @@ void hal_bus_pci_write32(uint32_t bdf, uint32_t reg, uint32_t val);
 /* Enable bus-mastering + memory space for a device */
 void hal_bus_pci_enable(hal_device_t *dev);
 
-/* Map a device BAR into virtual address space (identity map on bare-metal) */
+/* Map a device BAR into virtual address space (identity map on freestanding) */
 volatile void *hal_bus_map_bar(hal_device_t *dev, uint32_t bar_index);
 
 /* Find devices by class/subclass.  Returns count found. */

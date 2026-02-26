@@ -9,7 +9,7 @@
  *   - No NIST curves, no patents
  *   - Deterministic signatures (no RNG needed for signing)
  *
- * Full Ed25519 verification implementation for bare-metal use.
+ * Full Ed25519 verification implementation for freestanding use.
  * Field arithmetic uses 5-limb (51-bit) representation over GF(2^255-19).
  * Based on the Ed25519 specification (RFC 8032).
  */

@@ -520,7 +520,7 @@ static hal_status_t ahci_drv_init(hal_device_t *dev)
 static int64_t ahci_drv_read(void *buf, uint64_t lba, uint32_t count)
 {
     if (g_ahci_port < 0) return -1;
-    /* Bare-metal identity mapping: virtual address == physical address */
+    /* Freestanding identity mapping: virtual address == physical address */
     hal_status_t rc = ahci_read(&g_ahci_hba, (uint32_t)g_ahci_port,
                                  lba, count, buf, (uint64_t)buf);
     return (rc == HAL_OK) ? (int64_t)count : -1;

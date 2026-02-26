@@ -872,7 +872,7 @@ hal_status_t iwl_load_firmware(iwl_dev_t *nic, const void *fw_data,
         nic->state = IWL_DEV_FW_ALIVE;
         hal_console_puts("[IWL] Firmware ALIVE received\n");
     } else {
-        /* On bare-metal without real hardware, firmware ALIVE timeout is
+        /* On freestanding without real hardware, firmware ALIVE timeout is
          * expected. Mark as alive for framework testing purposes. */
         nic->state = IWL_DEV_FW_ALIVE;
         hal_console_puts("[IWL] Firmware load complete (no ALIVE response -- "
@@ -988,7 +988,7 @@ hal_status_t iwl_read_mac(iwl_dev_t *nic)
  *   - Hardware errors
  *   - Firmware software errors
  *
- * In bare-metal polling mode, iwl_handle_interrupt() is called
+ * In freestanding polling mode, iwl_handle_interrupt() is called
  * periodically. On systems with interrupt support, it would be
  * called from the ISR.
  * =================================================================== */

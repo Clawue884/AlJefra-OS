@@ -570,7 +570,7 @@ static hal_status_t virtio_blk_drv_init(hal_device_t *dev)
 
 static int64_t virtio_blk_drv_read(void *buf, uint64_t lba, uint32_t count)
 {
-    /* Bare-metal identity mapping: virtual address == physical address */
+    /* Freestanding identity mapping: virtual address == physical address */
     hal_status_t rc = virtio_blk_read(&g_virtio_blk, lba, count,
                                        buf, (uint64_t)buf);
     return (rc == HAL_OK) ? (int64_t)count : -1;

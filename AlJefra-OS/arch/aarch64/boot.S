@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* AlJefra OS -- AArch64 Boot Stub
  *
- * Entry point for AArch64 bare-metal boot.
+ * Entry point for AArch64 freestanding boot.
  * Handles EL2 -> EL1 transition, stack setup, BSS clearing,
  * and calling into the C HAL init.
  *

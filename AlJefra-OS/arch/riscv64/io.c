@@ -65,7 +65,7 @@ void hal_mmio_barrier(void)
 /* ------------------------------------------------------------------ */
 
 /* Simple bump allocator for DMA buffers.
- * On bare-metal with identity mapping, virtual == physical. */
+ * On freestanding with identity mapping, virtual == physical. */
 
 #define DMA_POOL_BASE   0x88000000ULL   /* Above 2GB mark (after normal RAM) */
 #define DMA_POOL_SIZE   (16 * 1024 * 1024)  /* 16MB DMA pool */

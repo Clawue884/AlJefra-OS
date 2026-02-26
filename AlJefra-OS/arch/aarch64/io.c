@@ -65,7 +65,7 @@ void hal_mmio_barrier(void)
 /* ------------------------------------------------------------------ */
 
 /* Simple bump allocator for DMA buffers.
- * On bare-metal with identity mapping, virtual == physical.
+ * On freestanding with identity mapping, virtual == physical.
  * Aligned to 4KB page boundaries for DMA coherence. */
 
 #define DMA_POOL_BASE   0x4E000000ULL   /* Near end of 256MB RAM (0x40000000+224MB) */
@@ -89,7 +89,7 @@ void *hal_dma_alloc(uint64_t size, uint64_t *phys)
 
     dma_next = addr + size;
 
-    /* On bare-metal with identity mapping, VA == PA */
+    /* On freestanding with identity mapping, VA == PA */
     if (phys) *phys = addr;
 
     /* Zero the allocated region (no memset in freestanding) */

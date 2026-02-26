@@ -42,7 +42,7 @@ typedef struct {
 hal_status_t hal_mmu_init(void);
 
 /* Map a physical page range into virtual address space.
- * On bare-metal exokernel, this typically adds an identity mapping. */
+ * On freestanding exokernel, this typically adds an identity mapping. */
 hal_status_t hal_mmu_map(uint64_t virt, uint64_t phys, uint64_t size,
                           uint32_t perms, hal_mem_type_t type);
 

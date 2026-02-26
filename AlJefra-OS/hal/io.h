@@ -78,7 +78,7 @@ void     hal_port_out32(uint16_t port, uint32_t val);
 
 /* Allocate a physically-contiguous DMA buffer.
  * Returns virtual address; physical address written to *phys.
- * On bare-metal with identity mapping, virt == phys.
+ * On freestanding with identity mapping, virt == phys.
  */
 void *hal_dma_alloc(uint64_t size, uint64_t *phys);
 

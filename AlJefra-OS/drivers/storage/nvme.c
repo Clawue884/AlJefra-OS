@@ -571,7 +571,7 @@ static void nvme_drv_shutdown(void)
 
 static int64_t nvme_drv_read(void *buf, uint64_t lba, uint32_t count)
 {
-    /* Bare-metal identity mapping: virtual address == physical address */
+    /* Freestanding identity mapping: virtual address == physical address */
     hal_status_t rc = nvme_read(&g_nvme_ctrl, lba, count,
                                  buf, (uint64_t)buf);
     return (rc == HAL_OK) ? (int64_t)count : -1;

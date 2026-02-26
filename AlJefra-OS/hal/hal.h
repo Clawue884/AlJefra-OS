@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Boolean for bare-metal (no stdbool.h) */
+/* Boolean for freestanding (no stdbool.h) */
 #ifndef __cplusplus
 #ifndef bool
 typedef _Bool bool;

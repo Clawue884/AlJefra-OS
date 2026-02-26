@@ -348,7 +348,7 @@ volatile void *hal_bus_map_bar(hal_device_t *dev, uint32_t bar_index)
     if (bar_index >= HAL_BUS_MAX_BARS)
         return (volatile void *)0;
 
-    /* On bare-metal with identity mapping, BAR physical == virtual */
+    /* On freestanding with identity mapping, BAR physical == virtual */
     return (volatile void *)dev->bar[bar_index];
 }
 

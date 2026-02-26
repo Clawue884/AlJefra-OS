@@ -645,7 +645,7 @@ static uint32_t wf_wrap_eapol(wifi_ctx_t *ctx,
 static void wf_generate_snonce(wifi_ctx_t *ctx)
 {
     /* Use timer and MAC address as entropy. In production, use a proper
-     * PRNG. This is a bare-metal minimal implementation. */
+     * PRNG. This is a freestanding minimal implementation. */
     uint64_t ns = hal_timer_ns();
     sha1_ctx_t sha;
     sha1_init(&sha);

@@ -64,7 +64,7 @@ void hal_mmio_barrier(void)
 /* (loaded at 0x1E0000) but below the free memory pool.                       */
 /*                                                                            */
 /* This is intentionally simple: allocations are never truly freed,           */
-/* just the bump pointer is advanced.  For a bare-metal exokernel this        */
+/* just the bump pointer is advanced.  For a freestanding exokernel this        */
 /* is acceptable — DMA buffers are typically long-lived.                       */
 /* -------------------------------------------------------------------------- */
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* AlJefra OS -- RISC-V 64-bit Boot Stub
  *
- * Entry point for RISC-V bare-metal boot (S-mode).
+ * Entry point for RISC-V freestanding boot (S-mode).
  *
  * OpenSBI convention:
  *   a0 = hartid (hardware thread ID)
