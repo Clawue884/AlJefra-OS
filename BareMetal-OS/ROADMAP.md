@@ -149,9 +149,9 @@
 - [x] **Compiles clean**: 35 objects → 73KB binary, 0 errors
 
 ### 2.2 QEMU Testing
-- [ ] ARM64 QEMU `virt` machine boots to UART output
-- [ ] `_start` → hal_init → kernel_main runs successfully
-- [ ] Bus scan discovers VirtIO devices via DT
+- [x] ARM64 QEMU `virt` machine boots to UART output (Cortex-A72)
+- [x] `_start` → hal_init → kernel_main runs successfully
+- [x] Bus scan discovers 4 devices (PCIe + DT)
 - [ ] TCP/IP + AI agent runs on ARM64 QEMU
 
 ### 2.3 Physical Hardware
@@ -179,8 +179,8 @@
 - [x] **Compiles clean**: 35 objects → 65KB binary, 0 errors
 
 ### 3.2 QEMU Testing
-- [ ] RISC-V QEMU `virt` machine boots to UART output
-- [ ] Bus scan discovers VirtIO devices
+- [x] RISC-V QEMU `virt` machine boots to UART output (OpenSBI + Sv39)
+- [x] Bus scan discovers 12 devices (1 PCIe + 11 DT)
 - [ ] TCP/IP + AI agent runs on RISC-V QEMU
 
 ### 3.3 Physical Hardware
