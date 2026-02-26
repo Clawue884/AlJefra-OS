@@ -76,7 +76,10 @@ PLATFORM_SRCS =
 
 # Kernel core
 KERNEL_SRCS = kernel/main.c kernel/sched.c kernel/syscall.c \
-              kernel/driver_loader.c kernel/ai_bootstrap.c
+              kernel/driver_loader.c kernel/ai_bootstrap.c \
+              kernel/fs.c kernel/ai_chat.c kernel/keyboard.c \
+              kernel/dhcp.c kernel/ota.c kernel/panic.c \
+              kernel/klog.c kernel/memprotect.c
 
 # Portable drivers
 DRIVER_SRCS = $(wildcard drivers/storage/*.c) \
@@ -95,12 +98,15 @@ AI_SRCS = ai/marketplace.c
 # Store
 STORE_SRCS = store/verify.c store/install.c store/catalog.c
 
+# GUI system
+GUI_SRCS = gui/gui.c gui/widgets.c gui/desktop.c
+
 # Runtime library (compiler builtins: memcpy, memset, etc.)
 LIB_SRCS = lib/string.c
 
 # All C sources
 ALL_C_SRCS = $(ARCH_C_SRCS) $(PLATFORM_SRCS) $(KERNEL_SRCS) $(DRIVER_SRCS) \
-             $(NET_SRCS) $(AI_SRCS) $(STORE_SRCS) $(LIB_SRCS)
+             $(NET_SRCS) $(AI_SRCS) $(STORE_SRCS) $(GUI_SRCS) $(LIB_SRCS)
 
 # Object files
 ARCH_C_OBJS  = $(patsubst %.c,$(BUILD_DIR)/%.o,$(ARCH_C_SRCS))
@@ -111,10 +117,11 @@ DRIVER_OBJS  = $(patsubst %.c,$(BUILD_DIR)/%.o,$(DRIVER_SRCS))
 NET_OBJS     = $(patsubst %.c,$(BUILD_DIR)/%.o,$(NET_SRCS))
 AI_OBJS      = $(patsubst %.c,$(BUILD_DIR)/%.o,$(AI_SRCS))
 STORE_OBJS   = $(patsubst %.c,$(BUILD_DIR)/%.o,$(STORE_SRCS))
+GUI_OBJS     = $(patsubst %.c,$(BUILD_DIR)/%.o,$(GUI_SRCS))
 LIB_OBJS     = $(patsubst %.c,$(BUILD_DIR)/%.o,$(LIB_SRCS))
 
 ALL_OBJS = $(ARCH_S_OBJS) $(ARCH_C_OBJS) $(PLATFORM_OBJS) $(KERNEL_OBJS) \
-           $(DRIVER_OBJS) $(NET_OBJS) $(AI_OBJS) $(STORE_OBJS) $(LIB_OBJS)
+           $(DRIVER_OBJS) $(NET_OBJS) $(AI_OBJS) $(STORE_OBJS) $(GUI_OBJS) $(LIB_OBJS)
 
 # ── Targets ──
 
@@ -152,6 +159,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/net
 	@mkdir -p $(BUILD_DIR)/ai
 	@mkdir -p $(BUILD_DIR)/store
+	@mkdir -p $(BUILD_DIR)/gui
 	@mkdir -p $(BUILD_DIR)/lib
 
 $(BIN_DIR):

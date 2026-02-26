@@ -1,100 +1,72 @@
-# AlJefra OS Plugin SDK
+# AlJefra OS -- Plugin SDK Reference
 
-This document describes how to develop, build, sign, and publish plugins
-(drivers, GUI extensions, and system services) for AlJefra OS using the
-`.ajdrv` package format.
+## Overview
+
+The AlJefra Plugin SDK allows developers to build loadable plugins for AlJefra
+OS using the `.ajdrv` package format. Plugins are position-independent C
+binaries that run inside the kernel address space and receive services through
+a vtable (`kernel_api_t`).
+
+Plugins can extend AlJefra OS with new hardware drivers, GUI extensions, or
+system services -- all without recompiling the kernel.
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Package Format](#package-format)
-3. [Plugin Types](#plugin-types)
-4. [Kernel API Reference](#kernel-api-reference)
+1. [The .ajdrv Package Format](#the-ajdrv-package-format)
+2. [Plugin Types](#plugin-types)
+3. [Kernel API Reference (kernel_api_t)](#kernel-api-reference)
+4. [Driver Operations (driver_ops_t)](#driver-operations)
 5. [Build Requirements](#build-requirements)
 6. [Build Process](#build-process)
 7. [Example: Hello World Driver](#example-hello-world-driver)
 8. [Example: Storage Driver Skeleton](#example-storage-driver-skeleton)
 9. [Critical Rules](#critical-rules)
-10. [Signing](#signing)
-11. [Testing](#testing)
-12. [Publishing](#publishing)
-13. [Troubleshooting](#troubleshooting)
+10. [Signing with Ed25519](#signing-with-ed25519)
+11. [Testing in QEMU](#testing-in-qemu)
+12. [Publishing to the Marketplace](#publishing-to-the-marketplace)
+13. [Limitations and Pitfalls](#limitations-and-pitfalls)
 
 ---
 
-## Overview
+## The .ajdrv Package Format
 
-AlJefra OS can load drivers and plugins at runtime without rebooting. Plugins
-are distributed as `.ajdrv` packages -- self-contained, signed, relocatable
-binaries that the kernel loads into memory and links via a function-pointer
-vtable.
-
-The workflow:
-
-1. Write a C source file that implements the `driver_ops_t` interface
-2. Compile it as position-independent code (PIC)
-3. Package it into a `.ajdrv` file with metadata and an Ed25519 signature
-4. Upload it to the AlJefra Marketplace
-5. Users download it through the OS, the kernel verifies the signature,
-   loads the binary, and calls `init()`
-
----
-
-## Package Format
-
-A `.ajdrv` file has four sections laid out contiguously:
+An `.ajdrv` file is a self-contained driver package with this layout:
 
 ```
-+------------------+  offset 0
-| Header (64 B)    |  Magic, version, arch, category, sizes
-+------------------+  offset 64
-| Metadata (JSON)  |  Name, description, vendor/device IDs
-+------------------+  offset 64 + meta_size
-| PIC Binary       |  Position-independent ELF or flat binary
-+------------------+  offset 64 + meta_size + bin_size
-| Ed25519 Sig (64B)|  Signature over bytes [0 .. sig_offset)
-+------------------+
+Offset    Size      Field
+------    ----      -----
+0x00      4         Magic: "AJDR" (0x52444A41)
+0x04      2         Format version (currently 1)
+0x06      2         Architecture (0 = x86_64, 1 = aarch64, 2 = riscv64)
+0x08      2         Vendor ID (PCI vendor or 0xFFFF for non-PCI)
+0x0A      2         Device ID (PCI device or 0xFFFF for non-PCI)
+0x0C      2         Category (see driver_category_t)
+0x0E      2         Reserved (zero)
+0x10      4         Metadata JSON offset (from start of file)
+0x14      4         Metadata JSON length
+0x18      4         Binary code offset (from start of file)
+0x1C      4         Binary code length
+0x20      4         Entry point offset (relative to binary start)
+0x24      28        Reserved (zero)
+0x40      variable  Metadata JSON (UTF-8, null-terminated)
+...       variable  PIC binary (position-independent machine code)
+...       64        Ed25519 signature over all preceding bytes
 ```
 
-### Header Fields (64 bytes)
+**Total header size:** 64 bytes.
 
-| Offset | Size | Field             | Description                       |
-|--------|------|-------------------|-----------------------------------|
-| 0      | 4    | `magic`           | `0x4A444156` ("AJDV")             |
-| 4      | 2    | `version`         | Package format version (1)        |
-| 6      | 1    | `arch`            | 0=x86_64, 1=aarch64, 2=riscv64   |
-| 7      | 1    | `category`        | Driver category (see enum below)  |
-| 8      | 4    | `meta_size`       | Size of JSON metadata in bytes    |
-| 12     | 4    | `bin_size`        | Size of PIC binary in bytes       |
-| 16     | 2    | `vendor_id`       | PCI vendor ID (or 0x0000)         |
-| 18     | 2    | `device_id`       | PCI device ID (or 0x0000)         |
-| 20     | 44   | `reserved`        | Reserved, zero-filled             |
-
-### Category Codes
-
-| Code | Category      |
-|------|---------------|
-| 0    | Storage       |
-| 1    | Network       |
-| 2    | Input         |
-| 3    | Display       |
-| 4    | GPU           |
-| 5    | Bus           |
-| 6    | Other         |
-
-### Metadata JSON
+The metadata JSON contains human-readable information:
 
 ```json
 {
-    "name": "qemu_vga",
-    "description": "QEMU Standard VGA display driver",
+    "name": "my_driver",
     "version": "1.0.0",
-    "author": "AlJefra Team",
-    "vendor_id": "0x1234",
-    "device_id": "0x1111",
-    "license": "MIT"
+    "description": "My custom hardware driver",
+    "author": "Developer Name",
+    "license": "MIT",
+    "min_os_version": "1.0.0"
 }
 ```
 
@@ -102,28 +74,22 @@ A `.ajdrv` file has four sections laid out contiguously:
 
 ## Plugin Types
 
-### Driver
-
-The most common plugin type. Implements `driver_ops_t` to provide storage,
-network, input, or display functionality for a specific hardware device.
-
-### GUI Extension
-
-Provides additional GUI widgets, themes, or desktop panels. Uses the kernel
-API for framebuffer access and input polling.
-
-### System Service
-
-Background services such as a logging daemon, a health monitor, or an OTA
-update agent. Uses the kernel API for timers, console, and network access.
+| Category ID | Enum                 | Description                         |
+|-------------|----------------------|-------------------------------------|
+| 0           | DRIVER_CAT_STORAGE   | Block storage (NVMe, AHCI, eMMC)   |
+| 1           | DRIVER_CAT_NETWORK   | Network interface (Ethernet, WiFi)  |
+| 2           | DRIVER_CAT_INPUT     | Input device (keyboard, mouse, touch)|
+| 3           | DRIVER_CAT_DISPLAY   | Display / framebuffer               |
+| 4           | DRIVER_CAT_GPU       | GPU compute / graphics              |
+| 5           | DRIVER_CAT_BUS       | Bus controller (PCIe, USB host)     |
+| 6           | DRIVER_CAT_OTHER     | System service, utility, extension  |
 
 ---
 
 ## Kernel API Reference
 
-When a runtime driver is loaded, the kernel passes it a pointer to a
-`kernel_api_t` vtable. This is the driver's only interface to the kernel --
-it must not call any kernel symbols directly.
+When a runtime driver is loaded, the kernel passes a pointer to `kernel_api_t`.
+This is the **only** way for a plugin to access hardware and kernel services.
 
 ```c
 typedef struct {
@@ -135,17 +101,17 @@ typedef struct {
     void     (*mmio_write32)(volatile void *addr, uint32_t val);
     uint8_t  (*mmio_read8)(volatile void *addr);
     void     (*mmio_write8)(volatile void *addr, uint8_t val);
-    void     (*mmio_barrier)(void);      /* Memory barrier */
+    void     (*mmio_barrier)(void);    /* Memory barrier / fence */
 
-    /* DMA buffer allocation */
+    /* DMA buffer management */
     void *(*dma_alloc)(uint64_t size, uint64_t *phys);
     void  (*dma_free)(void *ptr, uint64_t size);
 
-    /* Timing */
-    void     (*delay_us)(uint64_t us);   /* Busy-wait delay */
-    uint64_t (*timer_ms)(void);          /* Monotonic ms clock */
+    /* Timer services */
+    void     (*delay_us)(uint64_t us);     /* Busy-wait delay */
+    uint64_t (*timer_ms)(void);            /* Millisecond timestamp */
 
-    /* PCI / Bus */
+    /* PCI bus operations */
     void          (*pci_enable)(hal_device_t *dev);
     volatile void *(*map_bar)(hal_device_t *dev, uint32_t idx);
     uint32_t      (*pci_read32)(uint32_t bdf, uint32_t reg);
@@ -155,42 +121,72 @@ typedef struct {
 
 ### Function Details
 
-| Function        | Description                                          |
-|-----------------|------------------------------------------------------|
-| `puts`          | Print a null-terminated string to the kernel console |
-| `mmio_read32`   | Read a 32-bit value from a memory-mapped register    |
-| `mmio_write32`  | Write a 32-bit value to a memory-mapped register     |
-| `mmio_read8`    | Read an 8-bit value from a memory-mapped register    |
-| `mmio_write8`   | Write an 8-bit value to a memory-mapped register     |
-| `mmio_barrier`  | Issue a memory barrier (fence) after MMIO writes     |
-| `dma_alloc`     | Allocate a DMA-capable buffer; returns virt and phys |
-| `dma_free`      | Free a previously allocated DMA buffer               |
-| `delay_us`      | Busy-wait for the specified number of microseconds   |
-| `timer_ms`      | Return current monotonic time in milliseconds        |
-| `pci_enable`    | Enable bus mastering and memory space for a PCI dev  |
-| `map_bar`       | Map a PCI BAR into the kernel virtual address space  |
-| `pci_read32`    | Read a 32-bit PCI configuration register             |
-| `pci_write32`   | Write a 32-bit PCI configuration register            |
+| Function       | Description                                          |
+|----------------|------------------------------------------------------|
+| `puts`         | Write a null-terminated string to the kernel console |
+| `mmio_read32`  | Read a 32-bit value from a memory-mapped register    |
+| `mmio_write32` | Write a 32-bit value to a memory-mapped register     |
+| `mmio_read8`   | Read an 8-bit value from a memory-mapped register    |
+| `mmio_write8`  | Write an 8-bit value to a memory-mapped register     |
+| `mmio_barrier` | Issue a memory fence (ensures ordering of MMIO ops)  |
+| `dma_alloc`    | Allocate a DMA-capable buffer; returns virt+phys addr|
+| `dma_free`     | Free a previously allocated DMA buffer               |
+| `delay_us`     | Busy-wait for a given number of microseconds         |
+| `timer_ms`     | Return current timestamp in milliseconds             |
+| `pci_enable`   | Enable bus-mastering and memory space for a PCI dev  |
+| `map_bar`      | Map a PCI BAR into kernel virtual address space      |
+| `pci_read32`   | Read a 32-bit PCI config register (BDF + offset)     |
+| `pci_write32`  | Write a 32-bit PCI config register (BDF + offset)    |
+
+---
+
+## Driver Operations
+
+Every plugin must expose a `driver_ops_t` structure as its entry point.
+The kernel calls the `init` function with the matched device.
+
+```c
+typedef struct {
+    const char       *name;
+    driver_category_t category;
+
+    /* Lifecycle */
+    hal_status_t    (*init)(hal_device_t *dev);
+    void            (*shutdown)(void);
+
+    /* Storage drivers */
+    int64_t         (*read)(void *buf, uint64_t lba, uint32_t count);
+    int64_t         (*write)(const void *buf, uint64_t lba, uint32_t count);
+
+    /* Network drivers */
+    int64_t         (*net_tx)(const void *frame, uint64_t len);
+    int64_t         (*net_rx)(void *frame, uint64_t max_len);
+    void            (*net_get_mac)(uint8_t mac[6]);
+
+    /* Input drivers */
+    int             (*input_poll)(void);   /* Returns keycode or -1 */
+} driver_ops_t;
+```
+
+Set unused function pointers to `(void *)0` (NULL).
 
 ---
 
 ## Build Requirements
 
 - **GCC** (native or cross-compiler for the target architecture)
-- **Mandatory flags**: `-fPIC -fno-tree-vectorize`
-  - `-fPIC`: Generates position-independent code (required for relocation)
-  - `-fno-tree-vectorize`: Prevents GCC from using absolute addresses for
-    SIMD operations
-- **Recommended flags**: `-O2 -Wall -ffreestanding -nostdlib -nostartfiles`
-- **No standard library**: The plugin runs in kernel space with no libc
+- **Mandatory flags:** `-fPIC -fno-tree-vectorize`
+- **Recommended flags:** `-ffreestanding -nostdlib -fno-builtin`
+- **No standard library** -- all functionality comes through `kernel_api_t`
+- **Position-independent code** -- the driver is loaded at an arbitrary address
 
-### Cross-Compilation
+### Architecture-Specific Compilers
 
-| Architecture | Compiler                     | Extra Flags                        |
-|-------------|------------------------------|------------------------------------|
-| x86_64      | `gcc`                        | `-m64 -march=x86-64 -mno-red-zone`|
-| aarch64     | `aarch64-linux-gnu-gcc`      | `-march=armv8-a`                   |
-| riscv64     | `riscv64-linux-gnu-gcc`      | `-march=rv64gc -mabi=lp64d`        |
+| Architecture | Compiler                    | Extra flags                            |
+|--------------|-----------------------------|----------------------------------------|
+| x86_64       | `gcc`                       | `-m64 -march=x86-64 -mno-red-zone`    |
+| aarch64      | `aarch64-linux-gnu-gcc`     | `-march=armv8-a`                       |
+| riscv64      | `riscv64-linux-gnu-gcc`     | `-march=rv64gc -mabi=lp64d`           |
 
 ---
 
@@ -204,25 +200,25 @@ cd drivers/runtime/
 ./build_ajdrv.sh <source.c> <arch> <vendor_id> <device_id> <category> <name> <desc>
 ```
 
-**Arguments:**
+**Parameters:**
 
-| Argument    | Description                                    |
-|-------------|------------------------------------------------|
-| `source.c`  | Path to the driver C source file               |
-| `arch`      | Target: `x86_64`, `aarch64`, or `riscv64`     |
-| `vendor_id` | PCI vendor ID in decimal (e.g., `4660` = 0x1234)|
-| `device_id` | PCI device ID in decimal (e.g., `4369` = 0x1111)|
-| `category`  | Category code (0-6, see table above)           |
-| `name`      | Short name (e.g., `qemu_vga`)                  |
-| `desc`      | Description string (quote if it has spaces)    |
+| Parameter   | Description                              | Example          |
+|-------------|------------------------------------------|------------------|
+| source.c    | Path to the driver C source file         | `qemu_vga.c`    |
+| arch        | Target architecture                      | `x86_64`         |
+| vendor_id   | PCI vendor ID (hex without 0x)           | `1234`           |
+| device_id   | PCI device ID (hex without 0x)           | `1111`           |
+| category    | Category number (see table above)        | `3`              |
+| name        | Short driver name                        | `qemu_vga`       |
+| desc        | Human-readable description (quoted)      | `"QEMU VGA"`     |
 
 **Example:**
 
 ```bash
-./build_ajdrv.sh qemu_vga.c x86_64 1234 1111 3 qemu_vga "QEMU Standard VGA"
+./build_ajdrv.sh my_nic.c x86_64 8086 100e 1 intel_e1000 "Intel e1000 NIC"
 ```
 
-This produces `qemu_vga.ajdrv` in the current directory.
+This produces `my_nic.ajdrv` -- ready to sign and deploy.
 
 ---
 
@@ -231,61 +227,38 @@ This produces `qemu_vga.ajdrv` in the current directory.
 A minimal driver that prints a message on load:
 
 ```c
-/* hello.c — Minimal AlJefra OS runtime driver */
+/* SPDX-License-Identifier: MIT */
+/* hello.c -- Minimal AlJefra OS driver example */
 
-#include <stdint.h>
+#include "../../kernel/driver_loader.h"
 
-/* Forward declaration of kernel API (provided at load time) */
-typedef struct {
-    void (*puts)(const char *s);
-    uint32_t (*mmio_read32)(volatile void *addr);
-    void     (*mmio_write32)(volatile void *addr, uint32_t val);
-    uint8_t  (*mmio_read8)(volatile void *addr);
-    void     (*mmio_write8)(volatile void *addr, uint8_t val);
-    void     (*mmio_barrier)(void);
-    void *(*dma_alloc)(uint64_t size, uint64_t *phys);
-    void  (*dma_free)(void *ptr, uint64_t size);
-    void     (*delay_us)(uint64_t us);
-    uint64_t (*timer_ms)(void);
-    void          (*pci_enable)(void *dev);
-    volatile void *(*map_bar)(void *dev, uint32_t idx);
-    uint32_t      (*pci_read32)(uint32_t bdf, uint32_t reg);
-    void          (*pci_write32)(uint32_t bdf, uint32_t reg, uint32_t val);
-} kernel_api_t;
+static const kernel_api_t *K;
 
-/* Driver ops — must be runtime-initialized (see Critical Rules) */
-typedef struct {
-    const char *name;
-    int         category;
-    int       (*init)(void *dev);
-    void      (*shutdown)(void);
-} driver_ops_t;
-
-static const kernel_api_t *g_api;
 static driver_ops_t g_ops;
 
-static int hello_init(void *dev) {
-    (void)dev;
-    g_api->puts("hello: driver loaded successfully!\n");
-    return 0;
+static hal_status_t hello_init(hal_device_t *dev)
+{
+    K->puts("hello: driver loaded successfully!\n");
+    return HAL_OK;
 }
 
-static void hello_shutdown(void) {
-    g_api->puts("hello: shutting down\n");
+static void hello_shutdown(void)
+{
+    K->puts("hello: shutting down\n");
 }
 
-/* Entry point — called by the kernel driver loader */
-driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev) {
-    g_api = api;
+/* Entry point -- called by the kernel loader.
+ * Returns a pointer to the driver_ops_t structure.
+ */
+driver_ops_t *ajdrv_entry(const kernel_api_t *api)
+{
+    K = api;
 
-    /* MUST runtime-initialize — no static initializers for pointers */
+    /* IMPORTANT: Initialize ops at runtime, NOT with static initializer */
     g_ops.name     = "hello";
-    g_ops.category = 6;  /* OTHER */
+    g_ops.category = DRIVER_CAT_OTHER;
     g_ops.init     = hello_init;
     g_ops.shutdown = hello_shutdown;
-
-    if (hello_init(dev) != 0)
-        return (void *)0;
 
     return &g_ops;
 }
@@ -294,7 +267,7 @@ driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev) {
 Build it:
 
 ```bash
-./build_ajdrv.sh hello.c x86_64 0 0 6 hello "Hello World test driver"
+./build_ajdrv.sh hello.c x86_64 ffff ffff 6 hello "Hello World driver"
 ```
 
 ---
@@ -302,58 +275,76 @@ Build it:
 ## Example: Storage Driver Skeleton
 
 ```c
-/* mystore.c — Storage driver skeleton for AlJefra OS */
+/* SPDX-License-Identifier: MIT */
+/* my_storage.c -- Storage driver skeleton for AlJefra OS */
 
-#include <stdint.h>
+#include "../../kernel/driver_loader.h"
 
-typedef struct { /* ... kernel_api_t fields ... */ } kernel_api_t;
-typedef struct { /* ... driver_ops_t fields ... */ } driver_ops_t;
+static const kernel_api_t *K;
+static volatile void *regs;
 
-static const kernel_api_t *g_api;
 static driver_ops_t g_ops;
-static volatile void *g_bar;
 
-static int mystore_init(void *dev) {
-    g_api->pci_enable(dev);
-    g_bar = g_api->map_bar(dev, 0);
-    if (!g_bar) {
-        g_api->puts("mystore: failed to map BAR0\n");
-        return -1;
+static hal_status_t storage_init(hal_device_t *dev)
+{
+    K->pci_enable(dev);
+    regs = K->map_bar(dev, 0);
+    if (!regs) {
+        K->puts("my_storage: BAR0 map failed\n");
+        return HAL_ERR_IO;
     }
 
-    uint32_t cap = g_api->mmio_read32((volatile uint8_t *)g_bar + 0x00);
-    g_api->puts("mystore: controller online\n");
-    return 0;
+    /* Read device status register */
+    uint32_t status = K->mmio_read32((volatile uint8_t *)regs + 0x04);
+    K->puts("my_storage: device detected, status=0x");
+    /* ... print hex ... */
+
+    /* Reset device */
+    K->mmio_write32((volatile uint8_t *)regs + 0x00, 0x01);
+    K->delay_us(1000);
+    K->mmio_barrier();
+
+    /* Allocate DMA command buffer */
+    uint64_t dma_phys;
+    void *dma_buf = K->dma_alloc(4096, &dma_phys);
+    if (!dma_buf) {
+        K->puts("my_storage: DMA alloc failed\n");
+        return HAL_ERR_NOMEM;
+    }
+
+    K->puts("my_storage: init complete\n");
+    return HAL_OK;
 }
 
-static int64_t mystore_read(void *buf, uint64_t lba, uint32_t count) {
-    /* Build command, submit to hardware, wait for completion */
-    /* Use g_api->dma_alloc() for DMA buffers */
-    /* Use g_api->mmio_write32() to poke doorbell registers */
-    return count;  /* Return sectors read */
+static int64_t storage_read(void *buf, uint64_t lba, uint32_t count)
+{
+    /* Issue read command via MMIO registers */
+    /* ... hardware-specific logic ... */
+    return (int64_t)count;
 }
 
-static int64_t mystore_write(const void *buf, uint64_t lba, uint32_t cnt) {
-    /* Similar to read, but with write command */
-    return cnt;
+static int64_t storage_write(const void *buf, uint64_t lba, uint32_t count)
+{
+    /* Issue write command via MMIO registers */
+    /* ... hardware-specific logic ... */
+    return (int64_t)count;
 }
 
-static void mystore_shutdown(void) {
-    g_api->puts("mystore: shutdown\n");
+static void storage_shutdown(void)
+{
+    K->puts("my_storage: shutdown\n");
 }
 
-driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev) {
-    g_api = api;
+driver_ops_t *ajdrv_entry(const kernel_api_t *api)
+{
+    K = api;
 
-    g_ops.name     = "mystore";
-    g_ops.category = 0;  /* STORAGE */
-    g_ops.init     = mystore_init;
-    g_ops.shutdown = mystore_shutdown;
-    g_ops.read     = mystore_read;
-    g_ops.write    = mystore_write;
-
-    if (mystore_init(dev) != 0)
-        return (void *)0;
+    g_ops.name     = "my_storage";
+    g_ops.category = DRIVER_CAT_STORAGE;
+    g_ops.init     = storage_init;
+    g_ops.shutdown = storage_shutdown;
+    g_ops.read     = storage_read;
+    g_ops.write    = storage_write;
 
     return &g_ops;
 }
@@ -363,179 +354,167 @@ driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev) {
 
 ## Critical Rules
 
-These rules are mandatory. Violating them will produce drivers that crash
-at load time or behave incorrectly.
+These rules prevent hard-to-debug failures in runtime-loaded drivers:
 
-### 1. No Static Initializers for Pointer Fields
+### 1. Never Use Static Initializers for Pointer Fields
 
-**Wrong** (generates absolute addresses baked at link time):
+**WRONG** (generates absolute addresses baked at link time):
 
 ```c
 static driver_ops_t g_ops = {
-    .name = "mydriver",
-    .init = mydriver_init,     /* ABSOLUTE ADDRESS -- will crash */
+    .name = "my_driver",
+    .init = my_init,       /* ABSOLUTE ADDRESS -- will crash at runtime */
 };
 ```
 
-**Correct** (generates RIP-relative LEA instructions):
+**CORRECT** (generates RIP-relative `lea` instructions):
 
 ```c
 static driver_ops_t g_ops;
 
-driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev) {
-    g_ops.name = "mydriver";
-    g_ops.init = mydriver_init;   /* Runtime assignment -- safe */
-    /* ... */
+driver_ops_t *ajdrv_entry(const kernel_api_t *api)
+{
+    g_ops.name = "my_driver";
+    g_ops.init = my_init;  /* Runtime assignment -- position-independent */
+    return &g_ops;
 }
 ```
 
-### 2. Always Use -fPIC -fno-tree-vectorize
+### 2. Always Compile with -fPIC -fno-tree-vectorize
 
-Without `-fPIC`, the compiler generates absolute addresses that cannot be
-relocated. Without `-fno-tree-vectorize`, auto-vectorization may introduce
-absolute address references even in PIC mode.
+The `-fPIC` flag makes all code position-independent. The `-fno-tree-vectorize`
+flag prevents GCC from auto-vectorizing loops, which can introduce absolute
+address references.
 
-### 3. No Standard Library Calls
+### 3. No Standard Library
 
-There is no `libc` in kernel space. Do not call `printf`, `malloc`, `memcpy`,
-or any standard library function. Use only the `kernel_api_t` vtable.
+Runtime drivers have no libc. Use the `kernel_api_t` vtable for all I/O.
+If you need `memcpy` or `memset`, implement them inline or request them
+through the kernel API.
 
-If you need `memcpy` or `memset`, implement them locally in your source file.
+### 4. No Global Constructors
 
-### 4. Entry Point Must Be `ajdrv_entry`
-
-The kernel looks for the symbol `ajdrv_entry` when loading a `.ajdrv` package.
-It must have this exact signature:
-
-```c
-driver_ops_t *ajdrv_entry(const kernel_api_t *api, void *dev);
-```
-
-Return a pointer to your `driver_ops_t` on success, or `NULL` (`(void *)0`)
-on failure.
+Do not rely on `__attribute__((constructor))` or C++ global constructors.
+The kernel does not run `.init_array` for runtime drivers.
 
 ---
 
-## Signing
+## Signing with Ed25519
 
-All `.ajdrv` packages must be signed with Ed25519 before they can be loaded
-by the kernel. Unsigned packages are rejected.
+All `.ajdrv` packages must be signed before they can be loaded by AlJefra OS.
 
 ### Signing Process
 
-1. Build the `.ajdrv` package (header + metadata + binary, no signature yet)
-2. Sign the package with the AlJefra Store signing key:
+1. Generate a keypair (done once):
    ```bash
-   # Using the provided signing tool
-   python3 server/sign_ajdrv.py --key store_signing_key.pem --input mydriver.ajdrv
+   # Using the AlJefra signing tool
+   python3 server/sign_tool.py keygen --out my_key
+   # Produces: my_key.pub (32 bytes) and my_key.sec (64 bytes)
    ```
-3. The tool appends a 64-byte Ed25519 signature to the package
 
-### Verification
+2. Sign the package:
+   ```bash
+   python3 server/sign_tool.py sign --key my_key.sec --input my_driver.ajdrv
+   # Appends 64-byte Ed25519 signature to the file
+   ```
 
-The kernel verifies the signature at load time using the Store public key
-embedded in the kernel image. The verification implementation is in
-`store/verify.c` (full Ed25519 over GF(2^255-19) with SHA-512).
+3. Verify (optional, for testing):
+   ```bash
+   python3 server/sign_tool.py verify --key my_key.pub --input my_driver.ajdrv
+   ```
 
-### For Development / Testing
+### Trust Model
 
-During development, you can disable signature verification in QEMU by
-building the kernel with the `NO_VERIFY` flag. This is for testing only and
-must never be used in production.
+The OS ships with the AlJefra Store public key embedded in the kernel. Only
+packages signed with the corresponding private key (held by AlJefra / Qatar IT)
+will pass verification. Third-party developers submit unsigned packages to the
+marketplace; the store signs them after review.
+
+See `doc/security_model.md` for the full trust chain documentation.
 
 ---
 
-## Testing
+## Testing in QEMU
 
-### Local Testing in QEMU
+### Load a Runtime Driver
 
-1. Build the kernel with marketplace support:
+1. Start the marketplace server:
    ```bash
-   make ARCH=x86_64
+   cd server/
+   python3 app.py
    ```
 
-2. Start the marketplace server locally:
+2. Upload your `.ajdrv` to the marketplace:
    ```bash
-   cd server && python3 app.py
+   curl -X POST http://localhost:5000/v1/drivers/upload \
+     -F "file=@my_driver.ajdrv"
    ```
 
-3. Upload your `.ajdrv` to the local marketplace:
+3. Boot AlJefra OS in QEMU with network access:
    ```bash
-   curl -X POST -F "file=@mydriver.ajdrv" http://localhost:5000/v1/drivers/upload
+   qemu-system-x86_64 -machine q35 -cpu Westmere -m 256 -smp 1 \
+     -kernel build/x86_64/bin/kernel_x86_64.bin -nographic \
+     -netdev user,id=net0,hostfwd=tcp::5555-:80 \
+     -device e1000,netdev=net0
    ```
 
-4. Boot the kernel in QEMU -- it will connect to the local marketplace,
-   discover the driver, download it, verify the signature, and load it.
+4. The kernel will connect to the marketplace, discover your driver, download
+   it, verify the signature, and load it. Watch the serial console for output.
 
-### Verifying Driver Output
+### Debugging Tips
 
-Use `-serial stdio` with QEMU to see kernel console output. Your driver's
-`puts()` calls will appear in the serial output.
+- Add `K->puts()` calls liberally for tracing.
+- Use `K->timer_ms()` to measure initialization time.
+- Check return values from all kernel API calls.
+- If a driver crashes at load time, the most common cause is static
+  initializers for pointer fields (see Critical Rules above).
 
 ---
 
-## Publishing
+## Publishing to the Marketplace
 
-To publish a driver to the AlJefra Marketplace:
+1. **Build** your driver with `build_ajdrv.sh`.
+2. **Test** locally on QEMU.
+3. **Submit** via GitHub pull request to the `marketplace-drivers` branch, or
+   upload through the marketplace web UI at `os.aljefra.com/marketplace`.
+4. **Review:** The AlJefra team will review your driver for safety, code
+   quality, and compatibility.
+5. **Sign and publish:** Once approved, the driver is signed with the store
+   key and published to the marketplace.
 
-1. **Test thoroughly** in QEMU on the target architecture
-2. **Sign the package** with your developer key
-3. **Submit for review** via the marketplace API:
-   ```bash
-   curl -X POST -F "file=@mydriver.ajdrv" \
-     -F "author=Your Name" \
-     -F "source_url=https://github.com/you/mydriver" \
-     https://store.aljefra.com/v1/drivers/upload
-   ```
-4. **Community review**: Other developers can review and rate your driver
-5. **Approval**: Once approved, the driver appears in the public marketplace
+### Submission Checklist
 
-### Marketplace API Endpoints
-
-| Method | Endpoint                    | Description                 |
-|--------|-----------------------------|-----------------------------|
-| GET    | `/v1/drivers`               | List all available drivers  |
-| GET    | `/v1/drivers/<id>`          | Get driver details          |
-| POST   | `/v1/drivers/upload`        | Upload a new driver         |
-| GET    | `/v1/drivers/search`        | Search by name/vendor/arch  |
-| POST   | `/v1/drivers/<id>/review`   | Submit a community review   |
-| GET    | `/v1/drivers/<id>/reviews`  | Get reviews for a driver    |
-| POST   | `/v1/evolve`                | Submit an evolution proposal |
-| GET    | `/v1/updates`               | Check for OTA updates       |
-| GET    | `/v1/metrics`               | System metrics              |
+- [ ] Driver builds with `build_ajdrv.sh` without warnings
+- [ ] Driver loads and initializes in QEMU
+- [ ] No static initializers for function pointers
+- [ ] All error paths handled (BAR mapping failure, DMA alloc failure, etc.)
+- [ ] Source code includes SPDX license header
+- [ ] Metadata JSON is complete (name, version, description, author, license)
 
 ---
 
-## Troubleshooting
+## Limitations and Pitfalls
 
-### Driver crashes immediately on load
+1. **No dynamic memory allocator** beyond `dma_alloc`. Plan your memory
+   usage at init time.
 
-- Check for static initializers with function pointers (see Critical Rules #1)
-- Verify you compiled with `-fPIC -fno-tree-vectorize`
-- Ensure the entry point is named `ajdrv_entry`
+2. **Single-threaded execution.** Drivers run in the context of the calling
+   thread. Do not create threads or use locks.
 
-### "Signature verification failed"
+3. **No interrupt registration** in the current SDK version. Drivers must use
+   polling. Interrupt support is planned for SDK v2.
 
-- Make sure the package is signed with a recognized key
-- Check that the file was not modified after signing
-- For testing, build with `NO_VERIFY` flag
+4. **8 KB download buffer.** Very large drivers may need to be split or
+   compressed. This limit will be raised in a future release.
 
-### Driver loads but hardware does not respond
+5. **Architecture-specific binaries.** You must build separate `.ajdrv` files
+   for each target architecture (x86_64, aarch64, riscv64).
 
-- Verify `pci_enable()` was called before accessing BARs
-- Check that `map_bar()` returned a non-NULL pointer
-- Use `mmio_barrier()` after writing configuration registers
-- Confirm vendor/device IDs match the actual hardware
-
-### Build fails with "relocation R_X86_64_32 against .rodata"
-
-- You are missing `-fPIC`. Add it to your CFLAGS.
-
-### Build fails with undefined reference to `memcpy`
-
-- Implement `memcpy` locally in your source file. There is no libc.
+6. **VirtIO PCI capability parsing.** When parsing VirtIO PCI capabilities,
+   `cfg_type` is byte 3 of dword 0 (`cap_hdr >> 24`), NOT byte 0 of dword 1.
+   This has caused bugs in several early drivers.
 
 ---
 
-*AlJefra OS Plugin SDK -- Built in Qatar. Built for the world.*
+*AlJefra OS Plugin SDK v1.0*
 *Qatar IT -- www.QatarIT.com*

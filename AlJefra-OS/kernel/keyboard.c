@@ -16,6 +16,7 @@
  *    when the PS/2 driver's scancode set 2 path is not available.
  *    Index = scancode (make code), value = unshifted ASCII.
  * ──────────────────────────────────────────────────────────────────── */
+#if defined(__x86_64__) || defined(_M_X64)
 
 static const char sc1_normal[128] = {
     [0x02] = '1', [0x03] = '2', [0x04] = '3', [0x05] = '4',
@@ -71,17 +72,19 @@ static const char sc1_shifted[128] = {
 #define SC1_CAPSLOCK_MAKE   0x3A
 #define SC1_RELEASE_BIT     0x80
 
+#endif /* x86_64 scancode tables */
+
 /* ── Internal state ── */
 
-static keyboard_event_t g_buf[KB_BUF_SIZE];
-static volatile uint32_t g_head;   /* Next write position */
-static volatile uint32_t g_tail;   /* Next read position */
-
-/* Modifier tracking for raw port 0x60 path */
+/* Modifier tracking (used by raw port 0x60 on x86 and kb_modifiers() on all) */
 static bool g_shift;
 static bool g_ctrl;
 static bool g_alt;
 static bool g_capslock;
+
+static keyboard_event_t g_buf[KB_BUF_SIZE];
+static volatile uint32_t g_head;   /* Next write position */
+static volatile uint32_t g_tail;   /* Next read position */
 
 /* PS/2 driver instance (used on x86-64) */
 static ps2_dev_t g_ps2;

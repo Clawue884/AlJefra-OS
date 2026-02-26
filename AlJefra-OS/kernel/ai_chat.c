@@ -1,88 +1,42 @@
 /* SPDX-License-Identifier: MIT */
 /* AlJefra OS -- AI Chat Engine Implementation
  *
- * Core conversational interface: natural language -> system commands.
- * Supports offline local parsing (English + Arabic) and optional LLM fallback.
+ * Conversational interface: translates natural language (English + Arabic)
+ * into system actions, executes them via HAL / FS / driver APIs, and
+ * formats human-readable responses.
  *
  * Design constraints:
- *   - No direct networking code (uses pluggable LLM callback)
- *   - No heap allocator -- all buffers are static or stack
- *   - No libc -- uses lib/string.h and hal/ APIs only
- *   - Portable across x86-64, AArch64, RISC-V 64
+ *   - Bare-metal kernel code: no malloc, no stdio, no stdlib.
+ *   - All buffers are statically allocated.
+ *   - Only depends on: stdint.h, HAL API, kernel/fs.h, kernel/driver_loader.h,
+ *     and lib/string.h.
+ *   - Must compile with -ffreestanding -fno-builtin.
  */
 
 #include "ai_chat.h"
+#include "fs.h"
 #include "driver_loader.h"
-#include "ai_bootstrap.h"
-#include "sched.h"
 #include "../hal/hal.h"
 #include "../lib/string.h"
-#include "../net/dhcp.h"
-#include "../store/catalog.h"
-
-/* Network/marketplace modules (linked from net/ and ai/) */
-extern void tcp_init(uint32_t local_ip, uint32_t gateway, uint32_t netmask);
-extern void marketplace_set_gateway(uint32_t gateway_ip);
-extern hal_status_t marketplace_check_updates(const char *os_version,
-                                               char *update_url, uint32_t url_max);
 
 /* ========================================================================
- * Internal helpers (no libc available)
+ * Internal String Helpers
+ *
+ * We cannot use libc.  The lib/string.h provides memcpy, memset, memcmp,
+ * str_eq, str_len, str_copy.  We add a few more here that are specific to
+ * the chat engine (case-insensitive matching, substring search, number
+ * formatting).
  * ======================================================================== */
 
-/* Simple integer-to-string (unsigned decimal) into a buffer.
- * Returns number of characters written. */
-static int uint_to_str(char *buf, int max, uint64_t val)
-{
-    char tmp[24];
-    int len = 0;
+/* --- Character classification (ASCII only) --- */
 
-    if (val == 0) {
-        tmp[len++] = '0';
-    } else {
-        while (val > 0 && len < 22) {
-            tmp[len++] = '0' + (char)(val % 10);
-            val /= 10;
-        }
-    }
+static int is_upper(char c) { return (c >= 'A' && c <= 'Z'); }
+static int is_space(char c) { return (c == ' ' || c == '\t' || c == '\n' || c == '\r'); }
 
-    /* Reverse into output buffer */
-    int written = 0;
-    for (int i = len - 1; i >= 0 && written < max - 1; i--)
-        buf[written++] = tmp[i];
-    buf[written] = '\0';
-    return written;
-}
+static char to_lower(char c) { return is_upper(c) ? (char)(c + 32) : c; }
 
-/* Append a string to a buffer at *pos, respecting max.
- * Advances *pos. Returns bytes appended. */
-static int buf_append(char *buf, int *pos, int max, const char *s)
-{
-    int start = *pos;
-    while (*s && *pos < max - 1)
-        buf[(*pos)++] = *s++;
-    buf[*pos] = '\0';
-    return *pos - start;
-}
-
-/* Append an unsigned integer */
-static int buf_append_uint(char *buf, int *pos, int max, uint64_t val)
-{
-    char tmp[24];
-    uint_to_str(tmp, sizeof(tmp), val);
-    return buf_append(buf, pos, max, tmp);
-}
-
-/* Convert a character to lowercase (ASCII only) */
-static char to_lower(char c)
-{
-    if (c >= 'A' && c <= 'Z')
-        return c + ('a' - 'A');
-    return c;
-}
-
-/* Case-insensitive string comparison (ASCII) */
-static int str_eq_nocase(const char *a, const char *b)
+/* Case-insensitive byte-by-byte string equality (ASCII). */
+static int ci_eq(const char *a, const char *b)
 {
     while (*a && *b) {
         if (to_lower(*a) != to_lower(*b))
@@ -90,309 +44,1553 @@ static int str_eq_nocase(const char *a, const char *b)
         a++;
         b++;
     }
-    return to_lower(*a) == to_lower(*b);
+    return (*a == '\0' && *b == '\0');
 }
 
-/* Check if haystack starts with needle (case-insensitive) */
-static int __attribute__((unused)) starts_with_nocase(const char *haystack, const char *needle)
+/* Case-insensitive substring search.
+ * Returns pointer to first occurrence of `needle` in `haystack`, or NULL. */
+static const char *ci_strstr(const char *haystack, const char *needle)
 {
-    while (*needle) {
-        if (to_lower(*haystack) != to_lower(*needle))
-            return 0;
-        haystack++;
-        needle++;
+    if (!needle[0])
+        return haystack;
+
+    uint32_t nlen = str_len(needle);
+    uint32_t hlen = str_len(haystack);
+
+    if (nlen > hlen)
+        return (const char *)0;
+
+    for (uint32_t i = 0; i <= hlen - nlen; i++) {
+        uint32_t j;
+        for (j = 0; j < nlen; j++) {
+            if (to_lower(haystack[i + j]) != to_lower(needle[j]))
+                break;
+        }
+        if (j == nlen)
+            return &haystack[i];
     }
-    return 1;
+    return (const char *)0;
 }
 
-/* Check if a word appears in the input string (case-insensitive, word boundary).
- * A "word boundary" means the character before and after the match is not
- * alphanumeric, or the match is at the start/end of the string. */
-static int __attribute__((unused)) contains_word(const char *input, const char *word)
+/* Exact (byte-level) substring search.  Used for Arabic UTF-8 patterns
+ * where case-insensitive comparison is not meaningful. */
+static const char *byte_strstr(const char *haystack, const char *needle)
 {
-    uint32_t wlen = str_len(word);
-    uint32_t ilen = str_len(input);
+    if (!needle[0])
+        return haystack;
 
-    if (wlen == 0 || wlen > ilen)
+    uint32_t nlen = str_len(needle);
+    uint32_t hlen = str_len(haystack);
+
+    if (nlen > hlen)
+        return (const char *)0;
+
+    for (uint32_t i = 0; i <= hlen - nlen; i++) {
+        if (memcmp(&haystack[i], needle, nlen) == 0)
+            return &haystack[i];
+    }
+    return (const char *)0;
+}
+
+/* Bounded string copy that always NUL-terminates. */
+static void safe_copy(char *dst, const char *src, uint32_t max)
+{
+    if (max == 0)
+        return;
+    uint32_t i;
+    for (i = 0; i < max - 1 && src[i] != '\0'; i++)
+        dst[i] = src[i];
+    dst[i] = '\0';
+}
+
+/* Append src to dst (dst has total capacity `max`). */
+static void safe_append(char *dst, const char *src, uint32_t max)
+{
+    uint32_t dlen = str_len(dst);
+    if (dlen >= max - 1)
+        return;
+    safe_copy(dst + dlen, src, max - dlen);
+}
+
+/* Format an unsigned 64-bit integer into a decimal string.
+ * Returns the number of characters written (not including NUL). */
+static int fmt_u64(char *buf, uint32_t max, uint64_t val)
+{
+    if (max == 0)
         return 0;
 
-    for (uint32_t i = 0; i + wlen <= ilen; i++) {
-        /* Check if the substring matches */
-        int match = 1;
-        for (uint32_t j = 0; j < wlen; j++) {
-            if (to_lower(input[i + j]) != to_lower(word[j])) {
-                match = 0;
-                break;
-            }
+    /* Build digits in reverse */
+    char tmp[21]; /* max 20 digits for uint64_t */
+    int pos = 0;
+
+    if (val == 0) {
+        tmp[pos++] = '0';
+    } else {
+        while (val > 0 && pos < 20) {
+            tmp[pos++] = (char)('0' + (val % 10));
+            val /= 10;
         }
-        if (!match)
-            continue;
-
-        /* Check word boundaries */
-        int left_ok = (i == 0) ||
-                      (!(input[i - 1] >= 'a' && input[i - 1] <= 'z') &&
-                       !(input[i - 1] >= 'A' && input[i - 1] <= 'Z') &&
-                       !(input[i - 1] >= '0' && input[i - 1] <= '9'));
-        int right_ok = (i + wlen >= ilen) ||
-                       (!(input[i + wlen] >= 'a' && input[i + wlen] <= 'z') &&
-                        !(input[i + wlen] >= 'A' && input[i + wlen] <= 'Z') &&
-                        !(input[i + wlen] >= '0' && input[i + wlen] <= '9'));
-
-        if (left_ok && right_ok)
-            return 1;
     }
-    return 0;
+
+    /* Reverse into output */
+    int written = 0;
+    for (int i = pos - 1; i >= 0 && (uint32_t)written < max - 1; i--) {
+        buf[written++] = tmp[i];
+    }
+    buf[written] = '\0';
+    return written;
 }
 
-/* Check if input contains a substring (case-insensitive, no boundary check) */
-static int contains_substr(const char *input, const char *sub)
+/* Skip leading whitespace and return pointer past it. */
+static const char *skip_ws(const char *s)
 {
-    uint32_t slen = str_len(sub);
-    uint32_t ilen = str_len(input);
-
-    if (slen == 0 || slen > ilen)
-        return 0;
-
-    for (uint32_t i = 0; i + slen <= ilen; i++) {
-        int match = 1;
-        for (uint32_t j = 0; j < slen; j++) {
-            if (to_lower(input[i + j]) != to_lower(sub[j])) {
-                match = 0;
-                break;
-            }
-        }
-        if (match)
-            return 1;
-    }
-    return 0;
-}
-
-/* Skip leading whitespace and return pointer to first non-space */
-static const char *skip_space(const char *s)
-{
-    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r')
+    while (*s && is_space(*s))
         s++;
     return s;
 }
 
-/* Extract the argument after a keyword.
- * E.g. extract_arg("read myfile.txt", "read", buf, max)
- * writes "myfile.txt" into buf.  Returns 1 if arg found, 0 if not. */
-static int extract_arg_after(const char *input, const char *keyword,
-                              char *arg, uint32_t arg_max)
+/* Extract the first whitespace-delimited word after a position.
+ * Skips leading spaces, then copies up to the next space or end of string. */
+static void extract_arg(const char *after, char *arg, uint32_t max)
 {
-    uint32_t klen = str_len(keyword);
-    uint32_t ilen = str_len(input);
-
-    for (uint32_t i = 0; i + klen <= ilen; i++) {
-        int match = 1;
-        for (uint32_t j = 0; j < klen; j++) {
-            if (to_lower(input[i + j]) != to_lower(keyword[j])) {
-                match = 0;
-                break;
-            }
-        }
-        if (!match)
-            continue;
-
-        /* Keyword found at position i -- skip it and grab the rest */
-        const char *rest = skip_space(input + i + klen);
-        if (*rest) {
-            str_copy(arg, rest, arg_max);
-            /* Trim trailing whitespace from arg */
-            uint32_t alen = str_len(arg);
-            while (alen > 0 && (arg[alen - 1] == ' ' || arg[alen - 1] == '\n'))
-                arg[--alen] = '\0';
-            return 1;
-        }
+    after = skip_ws(after);
+    uint32_t i = 0;
+    while (after[i] && !is_space(after[i]) && i < max - 1) {
+        arg[i] = after[i];
+        i++;
     }
-    return 0;
+    arg[i] = '\0';
 }
 
-/* Check if a byte sequence is the start of a UTF-8 Arabic character.
- * Arabic Unicode block: U+0600..U+06FF.
- * UTF-8 encoding: 0xD8 0x80 .. 0xDB 0xBF */
-static int is_utf8_arabic(const uint8_t *p)
+/* Extract the rest of the string after a position (trimmed both sides). */
+static void extract_rest(const char *after, char *arg, uint32_t max)
 {
-    if (p[0] >= 0xD8 && p[0] <= 0xDB && p[1] && (p[1] & 0xC0) == 0x80)
-        return 1;
-    return 0;
-}
+    after = skip_ws(after);
+    safe_copy(arg, after, max);
 
-/* Check if input contains any Arabic UTF-8 characters */
-static int has_arabic(const char *input)
-{
-    const uint8_t *p = (const uint8_t *)input;
-    while (*p) {
-        if (is_utf8_arabic(p))
-            return 1;
-        p++;
+    /* Trim trailing whitespace */
+    uint32_t len = str_len(arg);
+    while (len > 0 && is_space(arg[len - 1])) {
+        arg[--len] = '\0';
     }
-    return 0;
-}
-
-/* Compare UTF-8 Arabic strings.
- * Both a and b are UTF-8 encoded.  Returns 1 if equal. */
-static int __attribute__((unused)) utf8_eq(const char *a, const char *b)
-{
-    while (*a && *b) {
-        if ((uint8_t)*a != (uint8_t)*b)
-            return 0;
-        a++;
-        b++;
-    }
-    return *a == *b;
-}
-
-/* Check if UTF-8 string starts with a prefix */
-static int __attribute__((unused)) utf8_starts_with(const char *s, const char *prefix)
-{
-    while (*prefix) {
-        if ((uint8_t)*s != (uint8_t)*prefix)
-            return 0;
-        s++;
-        prefix++;
-    }
-    return 1;
 }
 
 /* ========================================================================
- * Minimal JSON extraction (for parsing LLM responses)
- *
- * The LLM is instructed to respond with:
- *   {"action": "fs_list", "args": ""}
- * or:
- *   {"text": "Here is some helpful text..."}
- * ======================================================================== */
-
-/* Find a JSON string value for a given key.
- * Input: raw JSON string.  Searches for "key":"value".
- * Writes value into out (unescaped).  Returns length or -1. */
-static int json_extract_string(const char *json, const char *key,
-                                char *out, int out_max)
-{
-    uint32_t klen = str_len(key);
-    uint32_t jlen = str_len(json);
-
-    /* Search for "key" pattern */
-    for (uint32_t i = 0; i + klen + 4 < jlen; i++) {
-        if (json[i] != '"')
-            continue;
-
-        /* Check if this is our key */
-        int match = 1;
-        for (uint32_t j = 0; j < klen; j++) {
-            if (json[i + 1 + j] != key[j]) {
-                match = 0;
-                break;
-            }
-        }
-        if (!match || json[i + 1 + klen] != '"')
-            continue;
-
-        /* Found the key.  Skip past "key": and find the value string. */
-        uint32_t pos = i + 1 + klen + 1; /* past closing quote of key */
-
-        /* Skip colon and whitespace */
-        while (pos < jlen && (json[pos] == ':' || json[pos] == ' ' ||
-                               json[pos] == '\t' || json[pos] == '\n'))
-            pos++;
-
-        if (pos >= jlen || json[pos] != '"')
-            continue;
-
-        /* Parse the value string with escape handling */
-        pos++; /* skip opening quote */
-        int opos = 0;
-        while (pos < jlen && json[pos] != '"' && opos < out_max - 1) {
-            if (json[pos] == '\\' && pos + 1 < jlen) {
-                pos++;
-                switch (json[pos]) {
-                case 'n':  out[opos++] = '\n'; break;
-                case 'r':  out[opos++] = '\r'; break;
-                case 't':  out[opos++] = '\t'; break;
-                case '"':  out[opos++] = '"';  break;
-                case '\\': out[opos++] = '\\'; break;
-                default:   out[opos++] = json[pos]; break;
-                }
-            } else {
-                out[opos++] = json[pos];
-            }
-            pos++;
-        }
-        out[opos] = '\0';
-        return opos;
-    }
-
-    return -1; /* Key not found */
-}
-
-/* ========================================================================
- * Global session state
- * ======================================================================== */
-
-static ai_chat_session_t g_session;
-
-/* ========================================================================
- * Action name table -- maps action_type_t <-> string
+ * Action Name Lookup Table
  * ======================================================================== */
 
 typedef struct {
-    action_type_t type;
-    const char   *name;
-    const char   *desc_en;
-    const char   *desc_ar;
-} action_info_t;
+    action_type_t  type;
+    const char    *name;
+} action_name_entry_t;
 
-static const action_info_t g_action_table[] = {
-    { ACTION_FS_LIST,        "fs_list",        "List files",                 "\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa"  },
-    { ACTION_FS_READ,        "fs_read",        "Read file",                  "\xd9\x82\xd8\xb1\xd8\xa7\xd8\xa1\xd8\xa9 \xd9\x85\xd9\x84\xd9\x81"  },
-    { ACTION_FS_WRITE,       "fs_write",       "Write file",                 "\xd9\x83\xd8\xaa\xd8\xa7\xd8\xa8\xd8\xa9 \xd9\x85\xd9\x84\xd9\x81"  },
-    { ACTION_FS_DELETE,      "fs_delete",      "Delete file",                "\xd8\xad\xd8\xb0\xd9\x81 \xd9\x85\xd9\x84\xd9\x81"  },
-    { ACTION_FS_CREATE,      "fs_create",      "Create file",                "\xd8\xa5\xd9\x86\xd8\xb4\xd8\xa7\xd8\xa1 \xd9\x85\xd9\x84\xd9\x81"  },
-    { ACTION_NET_STATUS,     "net_status",     "Network status",             "\xd8\xad\xd8\xa7\xd9\x84\xd8\xa9 \xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9"  },
-    { ACTION_NET_CONNECT,    "net_connect",    "Connect to network",         "\xd8\xa7\xd8\xaa\xd8\xb5\xd8\xa7\xd9\x84 \xd8\xa8\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9"  },
-    { ACTION_DRIVER_LIST,    "driver_list",    "List drivers",               "\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81\xd8\xa7\xd8\xaa"  },
-    { ACTION_DRIVER_SEARCH,  "driver_search",  "Search for driver",          "\xd8\xa8\xd8\xad\xd8\xab \xd8\xb9\xd9\x86 \xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81"  },
-    { ACTION_DRIVER_INSTALL, "driver_install", "Install driver",             "\xd8\xaa\xd8\xab\xd8\xa8\xd9\x8a\xd8\xaa \xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81"  },
-    { ACTION_SYS_INFO,       "sys_info",       "System information",         "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85"  },
-    { ACTION_SYS_REBOOT,     "sys_reboot",     "Reboot system",              "\xd8\xa5\xd8\xb9\xd8\xa7\xd8\xaf\xd8\xa9 \xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84"  },
-    { ACTION_SYS_SHUTDOWN,   "sys_shutdown",   "Shut down system",           "\xd8\xa5\xd9\x8a\xd9\x82\xd8\xa7\xd9\x81 \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85"  },
-    { ACTION_SYS_UPDATE,     "sys_update",     "Check for updates",          "\xd8\xa7\xd9\x84\xd8\xa8\xd8\xad\xd8\xab \xd8\xb9\xd9\x86 \xd8\xaa\xd8\xad\xd8\xaf\xd9\x8a\xd8\xab\xd8\xa7\xd8\xaa"  },
-    { ACTION_SYS_UPTIME,     "sys_uptime",     "Show uptime",                "\xd9\x88\xd9\x82\xd8\xaa \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84"  },
-    { ACTION_DISPLAY_SET,    "display_set",    "Change display settings",    "\xd8\xa5\xd8\xb9\xd8\xaf\xd8\xa7\xd8\xaf\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd8\xb4\xd8\xa7\xd8\xb4\xd8\xa9"  },
-    { ACTION_TASK_LIST,      "task_list",      "List tasks",                 "\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd9\x85\xd9\x87\xd8\xa7\xd9\x85"  },
-    { ACTION_MEMORY_INFO,    "memory_info",    "Memory information",         "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9"  },
-    { ACTION_HELP,           "help",           "Show help",                  "\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9"  },
-    { ACTION_NONE,           "none",           "Chat / unknown",             "\xd9\x85\xd8\xad\xd8\xa7\xd8\xaf\xd8\xab\xd8\xa9"  },
+static const action_name_entry_t g_action_names[] = {
+    { ACTION_FS_LIST,        "fs_list"        },
+    { ACTION_FS_READ,        "fs_read"        },
+    { ACTION_FS_WRITE,       "fs_write"       },
+    { ACTION_FS_DELETE,      "fs_delete"      },
+    { ACTION_FS_CREATE,      "fs_create"      },
+    { ACTION_NET_STATUS,     "net_status"     },
+    { ACTION_NET_CONNECT,    "net_connect"    },
+    { ACTION_DRIVER_LIST,    "driver_list"    },
+    { ACTION_DRIVER_SEARCH,  "driver_search"  },
+    { ACTION_DRIVER_INSTALL, "driver_install" },
+    { ACTION_SYS_INFO,       "sys_info"       },
+    { ACTION_SYS_REBOOT,     "sys_reboot"     },
+    { ACTION_SYS_SHUTDOWN,   "sys_shutdown"   },
+    { ACTION_SYS_UPDATE,     "sys_update"     },
+    { ACTION_SYS_UPTIME,     "sys_uptime"     },
+    { ACTION_DISPLAY_SET,    "display_set"    },
+    { ACTION_TASK_LIST,      "task_list"      },
+    { ACTION_MEMORY_INFO,    "memory_info"    },
+    { ACTION_HELP,           "help"           },
+    { ACTION_NONE,           "none"           },
 };
 
-#define ACTION_TABLE_SIZE  (sizeof(g_action_table) / sizeof(g_action_table[0]))
-
-/* ========================================================================
- * Action name lookup
- * ======================================================================== */
+#define ACTION_NAME_COUNT (sizeof(g_action_names) / sizeof(g_action_names[0]))
 
 const char *ai_action_name(action_type_t type)
 {
-    for (uint32_t i = 0; i < ACTION_TABLE_SIZE; i++) {
-        if (g_action_table[i].type == type)
-            return g_action_table[i].name;
+    for (uint32_t i = 0; i < ACTION_NAME_COUNT; i++) {
+        if (g_action_names[i].type == type)
+            return g_action_names[i].name;
     }
     return "none";
 }
 
 action_type_t ai_action_from_name(const char *name)
 {
-    for (uint32_t i = 0; i < ACTION_TABLE_SIZE; i++) {
-        if (str_eq_nocase(name, g_action_table[i].name))
-            return g_action_table[i].type;
+    if (!name)
+        return ACTION_NONE;
+
+    for (uint32_t i = 0; i < ACTION_NAME_COUNT; i++) {
+        if (ci_eq(name, g_action_names[i].name))
+            return g_action_names[i].type;
     }
     return ACTION_NONE;
 }
 
 /* ========================================================================
- * Session management
+ * Chat Session (Global Singleton)
+ * ======================================================================== */
+
+static ai_chat_session_t g_session;
+
+/* ========================================================================
+ * Language Detection
+ *
+ * Arabic UTF-8 bytes: the Arabic block (U+0600..U+06FF) encodes as
+ *   0xD8 0x80 .. 0xDB 0xBF
+ * If we see a lead byte in 0xD8..0xDB, it is very likely Arabic text.
+ *
+ * We also check for known Arabic keyword substrings as a secondary signal.
+ * ======================================================================== */
+
+/* Arabic keyword fragments (UTF-8 encoded) used for language detection. */
+static const char * const g_arabic_keywords[] = {
+    "\xd8\xa7\xd8\xb9\xd8\xb1\xd8\xb6",                                         /* اعرض */
+    "\xd8\xa7\xd9\x81\xd8\xaa\xd8\xad",                                         /* افتح */
+    "\xd8\xa7\xd8\xad\xd8\xb0\xd9\x81",                                         /* احذف */
+    "\xd8\xad\xd8\xa7\xd9\x84\xd8\xa9",                                         /* حالة */
+    "\xd8\xa7\xd8\xaa\xd8\xb5\xd9\x84",                                         /* اتصل */
+    "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa",               /* معلومات */
+    "\xd8\xa3\xd8\xb9\xd8\xaf",                                                   /* أعد */
+    "\xd8\xa7\xd9\x84\xd8\xb3\xd8\xa7\xd8\xa6\xd9\x82\xd9\x8a\xd9\x86",       /* السائقين */
+    "\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa7\xd8\xb4\xd8\xa9",                       /* الشاشة */
+    "\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9",                       /* مساعدة */
+    "\xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9",               /* الذاكرة */
+    "\xd8\xa7\xd9\x86\xd8\xb4\xd8\xa6",                                         /* انشئ */
+    "\xd8\xa7\xd9\x82\xd8\xb1\xd8\xa3",                                         /* اقرأ */
+    "\xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa",               /* الملفات */
+    "\xd8\xa7\xd8\xba\xd9\x84\xd8\xa7\xd9\x82",                               /* اغلاق */
+    "\xd8\xaa\xd8\xad\xd8\xaf\xd9\x8a\xd8\xab",                               /* تحديث */
+};
+
+#define ARABIC_KW_COUNT (sizeof(g_arabic_keywords) / sizeof(g_arabic_keywords[0]))
+
+/* Returns 1 if input appears to be Arabic, 0 for English. */
+static int detect_arabic(const char *input)
+{
+    /* Primary: check for Arabic UTF-8 lead bytes (0xD8..0xDB) */
+    for (uint32_t i = 0; input[i]; i++) {
+        uint8_t b = (uint8_t)input[i];
+        if (b >= 0xD8 && b <= 0xDB)
+            return 1;
+    }
+
+    /* Secondary: check for known Arabic keyword byte sequences */
+    for (uint32_t k = 0; k < ARABIC_KW_COUNT; k++) {
+        if (byte_strstr(input, g_arabic_keywords[k]))
+            return 1;
+    }
+
+    return 0;
+}
+
+/* Update the session's language field based on input. */
+static void detect_language(const char *input)
+{
+    if (detect_arabic(input)) {
+        g_session.language[0] = 'a';
+        g_session.language[1] = 'r';
+    } else {
+        g_session.language[0] = 'e';
+        g_session.language[1] = 'n';
+    }
+    g_session.language[2] = '\0';
+}
+
+/* ========================================================================
+ * History Ring Buffer
+ * ======================================================================== */
+
+static void history_add(int is_user, const char *text)
+{
+    uint32_t idx = g_session.history_head;
+
+    g_session.history[idx].is_user = is_user;
+    safe_copy(g_session.history[idx].text, text,
+              sizeof(g_session.history[idx].text));
+
+    g_session.history_head = (idx + 1) % AI_CHAT_HISTORY_MAX;
+
+    if (g_session.history_count < AI_CHAT_HISTORY_MAX)
+        g_session.history_count++;
+}
+
+/* Get the i-th oldest message in history (0 = oldest retained).
+ * Returns NULL if index is out of range. */
+static const chat_message_t *history_get(uint32_t i)
+{
+    if (i >= g_session.history_count)
+        return (const chat_message_t *)0;
+
+    uint32_t start;
+    if (g_session.history_count < AI_CHAT_HISTORY_MAX)
+        start = 0;
+    else
+        start = g_session.history_head; /* oldest is at head (about to be overwritten) */
+
+    uint32_t idx = (start + i) % AI_CHAT_HISTORY_MAX;
+    return &g_session.history[idx];
+}
+
+/* ========================================================================
+ * Local NLP Parser -- Pattern Matching Tables
+ *
+ * Each entry maps a keyword/phrase to an action type, with metadata about
+ * whether an argument follows, whether confirmation is needed, and the
+ * confidence level.
+ *
+ * Longer patterns are preferred over shorter ones (best-match strategy).
+ * ======================================================================== */
+
+typedef struct {
+    const char    *pattern;       /* Keyword or phrase to match                      */
+    action_type_t  action;        /* Resulting action type                           */
+    int            has_arg;       /* 1 = extract the text after the pattern as arg   */
+    int            needs_confirm; /* 1 = destructive action, needs user confirmation */
+    int            confidence;    /* 0-100 confidence level                          */
+    int            is_arabic;     /* 1 = exact byte match (UTF-8), 0 = ci ASCII     */
+} nlp_pattern_t;
+
+static const nlp_pattern_t g_patterns[] = {
+
+    /* ==== English: File commands ==== */
+    { "show files",       ACTION_FS_LIST,    0, 0, 90, 0 },
+    { "list files",       ACTION_FS_LIST,    0, 0, 90, 0 },
+    { "ls",               ACTION_FS_LIST,    0, 0, 90, 0 },
+    { "dir",              ACTION_FS_LIST,    0, 0, 70, 0 },
+    { "open ",            ACTION_FS_READ,    1, 0, 90, 0 },
+    { "read ",            ACTION_FS_READ,    1, 0, 90, 0 },
+    { "cat ",             ACTION_FS_READ,    1, 0, 90, 0 },
+    { "show ",            ACTION_FS_READ,    1, 0, 70, 0 },
+    { "create file ",     ACTION_FS_CREATE,  1, 0, 90, 0 },
+    { "create ",          ACTION_FS_CREATE,  1, 0, 70, 0 },
+    { "new file ",        ACTION_FS_CREATE,  1, 0, 90, 0 },
+    { "touch ",           ACTION_FS_CREATE,  1, 0, 90, 0 },
+    { "delete ",          ACTION_FS_DELETE,  1, 1, 90, 0 },
+    { "remove ",          ACTION_FS_DELETE,  1, 1, 90, 0 },
+    { "rm ",              ACTION_FS_DELETE,  1, 1, 90, 0 },
+    { "write ",           ACTION_FS_WRITE,   1, 0, 70, 0 },
+
+    /* ==== English: Network ==== */
+    { "network status",   ACTION_NET_STATUS,  0, 0, 90, 0 },
+    { "net status",       ACTION_NET_STATUS,  0, 0, 90, 0 },
+    { "show network",     ACTION_NET_STATUS,  0, 0, 90, 0 },
+    { "wifi status",      ACTION_NET_STATUS,  0, 0, 90, 0 },
+    { "wifi",             ACTION_NET_STATUS,  0, 0, 70, 0 },
+    { "connect",          ACTION_NET_CONNECT, 0, 0, 90, 0 },
+    { "dhcp",             ACTION_NET_CONNECT, 0, 0, 90, 0 },
+
+    /* ==== English: System ==== */
+    { "system info",      ACTION_SYS_INFO,     0, 0, 90, 0 },
+    { "sysinfo",          ACTION_SYS_INFO,     0, 0, 90, 0 },
+    { "system status",    ACTION_SYS_INFO,     0, 0, 90, 0 },
+    { "about",            ACTION_SYS_INFO,     0, 0, 70, 0 },
+    { "reboot",           ACTION_SYS_REBOOT,   0, 1, 90, 0 },
+    { "restart",          ACTION_SYS_REBOOT,   0, 1, 90, 0 },
+    { "shutdown",         ACTION_SYS_SHUTDOWN, 0, 1, 90, 0 },
+    { "power off",        ACTION_SYS_SHUTDOWN, 0, 1, 90, 0 },
+    { "halt",             ACTION_SYS_SHUTDOWN, 0, 1, 70, 0 },
+    { "uptime",           ACTION_SYS_UPTIME,   0, 0, 90, 0 },
+    { "update",           ACTION_SYS_UPDATE,   0, 0, 90, 0 },
+    { "check updates",    ACTION_SYS_UPDATE,   0, 0, 90, 0 },
+
+    /* ==== English: Drivers ==== */
+    { "list drivers",     ACTION_DRIVER_LIST,    0, 0, 90, 0 },
+    { "show drivers",     ACTION_DRIVER_LIST,    0, 0, 90, 0 },
+    { "drivers",          ACTION_DRIVER_LIST,    0, 0, 70, 0 },
+    { "install driver ",  ACTION_DRIVER_INSTALL, 1, 1, 90, 0 },
+    { "search driver ",   ACTION_DRIVER_SEARCH,  1, 0, 90, 0 },
+    { "find driver ",     ACTION_DRIVER_SEARCH,  1, 0, 90, 0 },
+
+    /* ==== English: Display ==== */
+    { "change resolution", ACTION_DISPLAY_SET, 0, 0, 90, 0 },
+    { "set resolution",    ACTION_DISPLAY_SET, 0, 0, 90, 0 },
+    { "brightness",        ACTION_DISPLAY_SET, 0, 0, 70, 0 },
+    { "display settings",  ACTION_DISPLAY_SET, 0, 0, 90, 0 },
+
+    /* ==== English: Memory ==== */
+    { "memory info",     ACTION_MEMORY_INFO, 0, 0, 90, 0 },
+    { "memory usage",    ACTION_MEMORY_INFO, 0, 0, 90, 0 },
+    { "memory",          ACTION_MEMORY_INFO, 0, 0, 70, 0 },
+    { "ram",             ACTION_MEMORY_INFO, 0, 0, 70, 0 },
+    { "free memory",     ACTION_MEMORY_INFO, 0, 0, 90, 0 },
+
+    /* ==== English: Tasks ==== */
+    { "list tasks",      ACTION_TASK_LIST, 0, 0, 90, 0 },
+    { "show tasks",      ACTION_TASK_LIST, 0, 0, 90, 0 },
+    { "processes",       ACTION_TASK_LIST, 0, 0, 70, 0 },
+
+    /* ==== English: Help ==== */
+    { "help",            ACTION_HELP, 0, 0, 90, 0 },
+    { "what can you do", ACTION_HELP, 0, 0, 90, 0 },
+    { "commands",        ACTION_HELP, 0, 0, 70, 0 },
+    { "usage",           ACTION_HELP, 0, 0, 70, 0 },
+
+    /* ==== Arabic: File commands ==== */
+    /* اعرض الملفات (show files) */
+    { "\xd8\xa7\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa",
+      ACTION_FS_LIST, 0, 0, 90, 1 },
+    /* اعرض (show -- general list fallback) */
+    { "\xd8\xa7\xd8\xb9\xd8\xb1\xd8\xb6",
+      ACTION_FS_LIST, 0, 0, 70, 1 },
+    /* افتح (open) + arg */
+    { "\xd8\xa7\xd9\x81\xd8\xaa\xd8\xad ",
+      ACTION_FS_READ, 1, 0, 90, 1 },
+    /* اقرأ (read) + arg */
+    { "\xd8\xa7\xd9\x82\xd8\xb1\xd8\xa3 ",
+      ACTION_FS_READ, 1, 0, 90, 1 },
+    /* انشئ (create) + arg */
+    { "\xd8\xa7\xd9\x86\xd8\xb4\xd8\xa6 ",
+      ACTION_FS_CREATE, 1, 0, 90, 1 },
+    /* احذف (delete) + arg -- destructive */
+    { "\xd8\xa7\xd8\xad\xd8\xb0\xd9\x81 ",
+      ACTION_FS_DELETE, 1, 1, 90, 1 },
+
+    /* ==== Arabic: Network ==== */
+    /* حالة الشبكة (network status) */
+    { "\xd8\xad\xd8\xa7\xd9\x84\xd8\xa9 \xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9",
+      ACTION_NET_STATUS, 0, 0, 90, 1 },
+    /* اتصل (connect) */
+    { "\xd8\xa7\xd8\xaa\xd8\xb5\xd9\x84",
+      ACTION_NET_CONNECT, 0, 0, 90, 1 },
+
+    /* ==== Arabic: System ==== */
+    /* معلومات النظام (system info) */
+    { "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85",
+      ACTION_SYS_INFO, 0, 0, 90, 1 },
+    /* أعد التشغيل (reboot) -- destructive */
+    { "\xd8\xa3\xd8\xb9\xd8\xaf \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84",
+      ACTION_SYS_REBOOT, 0, 1, 90, 1 },
+    /* اغلاق (shutdown) -- destructive */
+    { "\xd8\xa7\xd8\xba\xd9\x84\xd8\xa7\xd9\x82",
+      ACTION_SYS_SHUTDOWN, 0, 1, 90, 1 },
+    /* تحديث (update) */
+    { "\xd8\xaa\xd8\xad\xd8\xaf\xd9\x8a\xd8\xab",
+      ACTION_SYS_UPDATE, 0, 0, 90, 1 },
+
+    /* ==== Arabic: Drivers ==== */
+    /* السائقين (drivers) */
+    { "\xd8\xa7\xd9\x84\xd8\xb3\xd8\xa7\xd8\xa6\xd9\x82\xd9\x8a\xd9\x86",
+      ACTION_DRIVER_LIST, 0, 0, 90, 1 },
+
+    /* ==== Arabic: Display ==== */
+    /* الشاشة (display/screen) */
+    { "\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa7\xd8\xb4\xd8\xa9",
+      ACTION_DISPLAY_SET, 0, 0, 70, 1 },
+
+    /* ==== Arabic: Memory ==== */
+    /* الذاكرة (memory) */
+    { "\xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9",
+      ACTION_MEMORY_INFO, 0, 0, 90, 1 },
+
+    /* ==== Arabic: Help ==== */
+    /* مساعدة (help) */
+    { "\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9",
+      ACTION_HELP, 0, 0, 90, 1 },
+};
+
+#define NLP_PATTERN_COUNT (sizeof(g_patterns) / sizeof(g_patterns[0]))
+
+/* ========================================================================
+ * ai_parse_local -- Local NLP Parser
+ *
+ * Strategy: scan all patterns, pick the longest match with the highest
+ * confidence.  This avoids ambiguous short-pattern matches (e.g. "show"
+ * should not beat "show files" if both are present in the input).
+ * ======================================================================== */
+
+int ai_parse_local(const char *input, ai_action_t *action)
+{
+    if (!input || !action)
+        return 0;
+
+    /* Initialize action to "nothing recognized" */
+    action->type = ACTION_NONE;
+    action->args[0] = '\0';
+    action->needs_confirm = 0;
+    action->confidence = 0;
+
+    /* Skip leading whitespace */
+    input = skip_ws(input);
+    if (input[0] == '\0')
+        return 0;
+
+    /* Best-match tracking */
+    int best_idx = -1;
+    uint32_t best_len = 0;
+    int best_conf = 0;
+
+    for (uint32_t p = 0; p < NLP_PATTERN_COUNT; p++) {
+        const nlp_pattern_t *pat = &g_patterns[p];
+        const char *match;
+
+        uint32_t plen = str_len(pat->pattern);
+
+        if (pat->is_arabic) {
+            /* Arabic patterns: exact byte-level match */
+            match = byte_strstr(input, pat->pattern);
+        } else {
+            /* English patterns: case-insensitive substring match */
+            match = ci_strstr(input, pat->pattern);
+        }
+
+        if (match) {
+            /* Prefer longer patterns, then higher confidence */
+            if (plen > best_len ||
+                (plen == best_len && pat->confidence > best_conf)) {
+                best_idx = (int)p;
+                best_len = plen;
+                best_conf = pat->confidence;
+            }
+        }
+    }
+
+    if (best_idx < 0)
+        return 0;
+
+    const nlp_pattern_t *best = &g_patterns[best_idx];
+
+    action->type = best->action;
+    action->needs_confirm = best->needs_confirm;
+    action->confidence = best->confidence;
+
+    /* Extract argument text if this pattern expects one */
+    if (best->has_arg) {
+        const char *match;
+        if (best->is_arabic)
+            match = byte_strstr(input, best->pattern);
+        else
+            match = ci_strstr(input, best->pattern);
+
+        if (match) {
+            const char *after = match + str_len(best->pattern);
+            extract_rest(after, action->args, sizeof(action->args));
+        }
+    }
+
+    return 1;
+}
+
+/* ========================================================================
+ * fs_list callback -- formats directory entries for ACTION_FS_LIST
+ * ======================================================================== */
+
+typedef struct {
+    char     *buf;      /* Output buffer */
+    uint32_t  max;      /* Buffer capacity */
+    int       count;    /* Number of entries appended */
+} fs_list_ctx_t;
+
+static void fs_list_callback(const char *name, uint64_t size, void *ctx)
+{
+    fs_list_ctx_t *c = (fs_list_ctx_t *)ctx;
+
+    /* Format: "  name (size unit)\n" */
+    safe_append(c->buf, "  ", c->max);
+    safe_append(c->buf, name, c->max);
+    safe_append(c->buf, " (", c->max);
+
+    char num[21];
+    if (size >= 1024 * 1024) {
+        fmt_u64(num, sizeof(num), size / (1024 * 1024));
+        safe_append(c->buf, num, c->max);
+        safe_append(c->buf, " MB", c->max);
+    } else if (size >= 1024) {
+        fmt_u64(num, sizeof(num), size / 1024);
+        safe_append(c->buf, num, c->max);
+        safe_append(c->buf, " KB", c->max);
+    } else {
+        fmt_u64(num, sizeof(num), size);
+        safe_append(c->buf, num, c->max);
+        safe_append(c->buf, " bytes", c->max);
+    }
+
+    safe_append(c->buf, ")\n", c->max);
+    c->count++;
+}
+
+/* ========================================================================
+ * ai_execute_action -- Action Executor
+ *
+ * Calls the appropriate HAL / FS / driver API for each action type and
+ * writes the result into the output buffer.
+ * ======================================================================== */
+
+/* Scratch buffer for file read data (avoids stack allocation of large arrays) */
+static char g_file_read_buf[4096];
+
+int ai_execute_action(const ai_action_t *action, char *output, int output_size)
+{
+    if (!action || !output || output_size <= 0)
+        return -1;
+
+    output[0] = '\0';
+    uint32_t omax = (uint32_t)output_size;
+
+    switch (action->type) {
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_FS_LIST: {
+        fs_list_ctx_t ctx;
+        ctx.buf = output;
+        ctx.max = omax;
+        ctx.count = 0;
+
+        int rc = fs_list(fs_list_callback, &ctx);
+        if (rc < 0) {
+            safe_copy(output,
+                "Error: filesystem not initialized or no storage available.",
+                omax);
+            return -1;
+        }
+
+        if (ctx.count == 0) {
+            safe_copy(output, "No files found on disk.", omax);
+        } else {
+            /* Prepend a header line: shift existing content right */
+            char header[64];
+            char num[12];
+            header[0] = '\0';
+            fmt_u64(num, sizeof(num), (uint64_t)ctx.count);
+            safe_copy(header, num, sizeof(header));
+            safe_append(header, " file(s) found:\n", sizeof(header));
+
+            uint32_t hlen = str_len(header);
+            uint32_t olen = str_len(output);
+            uint32_t total = hlen + olen;
+            if (total >= omax)
+                total = omax - 1;
+
+            /* Shift content right to make room for header */
+            uint32_t to_keep = total - hlen;
+            for (uint32_t i = to_keep; i > 0; i--)
+                output[hlen + i - 1] = output[i - 1];
+            output[total] = '\0';
+
+            /* Copy header into front */
+            for (uint32_t i = 0; i < hlen && i < total; i++)
+                output[i] = header[i];
+        }
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_FS_READ: {
+        if (action->args[0] == '\0') {
+            safe_copy(output, "Error: no filename specified.", omax);
+            return -1;
+        }
+
+        int fd = fs_open(action->args);
+        if (fd < 0) {
+            safe_copy(output, "Error: file '", omax);
+            safe_append(output, action->args, omax);
+            safe_append(output, "' not found.", omax);
+            return -1;
+        }
+
+        uint64_t fsize = fs_size(fd);
+        uint64_t to_read = fsize;
+        if (to_read > sizeof(g_file_read_buf) - 1)
+            to_read = sizeof(g_file_read_buf) - 1;
+
+        int64_t bytes = fs_read(fd, g_file_read_buf, 0, to_read);
+        fs_close(fd);
+
+        if (bytes < 0) {
+            safe_copy(output, "Error: failed to read file.", omax);
+            return -1;
+        }
+
+        g_file_read_buf[bytes] = '\0';
+
+        /* Build output: "File: name (size bytes)\n---\ncontent" */
+        safe_copy(output, "File: ", omax);
+        safe_append(output, action->args, omax);
+        safe_append(output, " (", omax);
+
+        char num[21];
+        fmt_u64(num, sizeof(num), fsize);
+        safe_append(output, num, omax);
+        safe_append(output, " bytes)\n---\n", omax);
+        safe_append(output, g_file_read_buf, omax);
+
+        if (to_read < fsize)
+            safe_append(output,
+                "\n... (truncated, file is larger than display buffer)", omax);
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_FS_CREATE: {
+        if (action->args[0] == '\0') {
+            safe_copy(output, "Error: no filename specified.", omax);
+            return -1;
+        }
+
+        int rc = fs_create(action->args, 1);
+        if (rc < 0) {
+            safe_copy(output, "Error: could not create file '", omax);
+            safe_append(output, action->args, omax);
+            safe_append(output,
+                "'. It may already exist or the disk may be full.", omax);
+            return -1;
+        }
+
+        safe_copy(output, "File '", omax);
+        safe_append(output, action->args, omax);
+        safe_append(output, "' created successfully (2 MB reserved).", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_FS_DELETE: {
+        if (action->args[0] == '\0') {
+            safe_copy(output, "Error: no filename specified.", omax);
+            return -1;
+        }
+
+        int rc = fs_delete(action->args);
+        if (rc < 0) {
+            safe_copy(output, "Error: could not delete file '", omax);
+            safe_append(output, action->args, omax);
+            safe_append(output, "'. File not found.", omax);
+            return -1;
+        }
+
+        safe_copy(output, "File '", omax);
+        safe_append(output, action->args, omax);
+        safe_append(output, "' deleted.", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_FS_WRITE: {
+        if (action->args[0] == '\0') {
+            safe_copy(output,
+                "Usage: write <filename> <data>\n"
+                "Specify a filename and the data to write.", omax);
+            return -1;
+        }
+
+        /* Parse "filename rest-of-data" from args */
+        char fname[BMFS_MAX_FILENAME];
+        extract_arg(action->args, fname, sizeof(fname));
+
+        if (fname[0] == '\0') {
+            safe_copy(output, "Error: no filename provided.", omax);
+            return -1;
+        }
+
+        int fd = fs_open(fname);
+        if (fd < 0) {
+            safe_copy(output, "Error: file '", omax);
+            safe_append(output, fname, omax);
+            safe_append(output, "' not found. Create it first.", omax);
+            return -1;
+        }
+
+        /* Find where data starts (after filename in args) */
+        const char *rest = action->args;
+        while (*rest && !is_space(*rest))
+            rest++;
+        rest = skip_ws(rest);
+
+        uint32_t dlen = str_len(rest);
+        if (dlen == 0) {
+            fs_close(fd);
+            safe_copy(output, "Error: no data provided to write.", omax);
+            return -1;
+        }
+
+        int64_t written = fs_write(fd, rest, 0, dlen);
+        fs_close(fd);
+
+        if (written < 0) {
+            safe_copy(output, "Error: write failed.", omax);
+            return -1;
+        }
+
+        safe_copy(output, "Wrote ", omax);
+        char num[21];
+        fmt_u64(num, sizeof(num), (uint64_t)written);
+        safe_append(output, num, omax);
+        safe_append(output, " bytes to '", omax);
+        safe_append(output, fname, omax);
+        safe_append(output, "'.", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_NET_STATUS: {
+        const driver_ops_t *net = driver_get_network();
+        if (!net) {
+            safe_copy(output,
+                "Network: no network driver loaded.\n"
+                "No NIC detected or driver not yet initialized.", omax);
+            return 0;
+        }
+
+        safe_copy(output, "Network Status:\n", omax);
+        safe_append(output, "  Driver: ", omax);
+        safe_append(output, net->name ? net->name : "unknown", omax);
+        safe_append(output, "\n", omax);
+
+        /* MAC address */
+        if (net->net_get_mac) {
+            uint8_t mac[6];
+            net->net_get_mac(mac);
+
+            safe_append(output, "  MAC: ", omax);
+            char hex[4];
+            for (int i = 0; i < 6; i++) {
+                if (i > 0)
+                    safe_append(output, ":", omax);
+                hex[0] = "0123456789ab"[(mac[i] >> 4) & 0xF];
+                hex[1] = "0123456789ab"[mac[i] & 0xF];
+                hex[2] = '\0';
+                safe_append(output, hex, omax);
+            }
+            safe_append(output, "\n", omax);
+        }
+
+        safe_append(output, "  Status: link up (driver active)\n", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_NET_CONNECT: {
+        const driver_ops_t *net = driver_get_network();
+        if (!net) {
+            safe_copy(output, "Error: no network driver available.", omax);
+            return -1;
+        }
+
+        safe_copy(output, "Network connection initiated via driver '", omax);
+        safe_append(output, net->name ? net->name : "unknown", omax);
+        safe_append(output,
+            "'.\nDHCP/IP configuration is handled by the AI bootstrap module.",
+            omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_SYS_INFO: {
+        hal_cpu_info_t cpu;
+        hal_cpu_get_info(&cpu);
+
+        safe_copy(output, "AlJefra OS v1.0\n", omax);
+        safe_append(output, "Architecture: ", omax);
+
+        switch (hal_arch()) {
+        case HAL_ARCH_X86_64:
+            safe_append(output, "x86-64\n", omax);
+            break;
+        case HAL_ARCH_AARCH64:
+            safe_append(output, "AArch64 (ARM64)\n", omax);
+            break;
+        case HAL_ARCH_RISCV64:
+            safe_append(output, "RISC-V 64-bit\n", omax);
+            break;
+        }
+
+        safe_append(output, "CPU: ", omax);
+        safe_append(output, cpu.model, omax);
+        safe_append(output, "\n", omax);
+
+        safe_append(output, "Vendor: ", omax);
+        safe_append(output, cpu.vendor, omax);
+        safe_append(output, "\n", omax);
+
+        char num[21];
+        safe_append(output, "Cores: ", omax);
+        fmt_u64(num, sizeof(num), (uint64_t)cpu.cores_logical);
+        safe_append(output, num, omax);
+        safe_append(output, "\n", omax);
+
+        uint64_t total_mb = hal_mmu_total_ram() / (1024 * 1024);
+        safe_append(output, "RAM: ", omax);
+        fmt_u64(num, sizeof(num), total_mb);
+        safe_append(output, num, omax);
+        safe_append(output, " MB\n", omax);
+
+        safe_append(output, "Cache line: ", omax);
+        fmt_u64(num, sizeof(num), (uint64_t)cpu.cache_line_bytes);
+        safe_append(output, num, omax);
+        safe_append(output, " bytes\n", omax);
+
+        /* CPU feature flags */
+        safe_append(output, "Features:", omax);
+        if (cpu.features & HAL_CPU_FEAT_FPU)    safe_append(output, " FPU", omax);
+        if (cpu.features & HAL_CPU_FEAT_SSE)    safe_append(output, " SSE", omax);
+        if (cpu.features & HAL_CPU_FEAT_AVX)    safe_append(output, " AVX", omax);
+        if (cpu.features & HAL_CPU_FEAT_NEON)   safe_append(output, " NEON", omax);
+        if (cpu.features & HAL_CPU_FEAT_SVE)    safe_append(output, " SVE", omax);
+        if (cpu.features & HAL_CPU_FEAT_RVVEC)  safe_append(output, " RVV", omax);
+        if (cpu.features & HAL_CPU_FEAT_RDRAND) safe_append(output, " RDRAND", omax);
+        if (cpu.features & HAL_CPU_FEAT_AES)    safe_append(output, " AES", omax);
+        safe_append(output, "\n", omax);
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_SYS_REBOOT: {
+        safe_copy(output, "System reboot initiated...\n", omax);
+        safe_append(output, "Flushing filesystem...\n", omax);
+
+        /* Sync FS before reset */
+        fs_sync();
+
+        /* On x86-64, pulse the keyboard controller reset line (port 0x64).
+         * On ARM/RISC-V, a PSCI/SBI call would be needed. */
+#if defined(__x86_64__) || defined(_M_X64)
+        hal_port_out8(0x64, 0xFE);
+#endif
+        safe_append(output,
+            "Reboot command sent. If the system does not restart,\n"
+            "a manual power cycle may be required.", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_SYS_SHUTDOWN: {
+        safe_copy(output, "System shutdown initiated...\n", omax);
+        safe_append(output, "Flushing filesystem...\n", omax);
+
+        fs_sync();
+
+        /* QEMU PIIX4 ACPI power-off: write 0x2000 to port 0x604. */
+#if defined(__x86_64__) || defined(_M_X64)
+        hal_port_out16(0x604, 0x2000);
+#endif
+        safe_append(output, "Shutdown command sent. System halting.\n", omax);
+
+        /* Halt CPU as fallback */
+        hal_cpu_disable_interrupts();
+        for (;;)
+            hal_cpu_halt();
+
+        return 0; /* unreachable */
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_SYS_UPDATE: {
+        safe_copy(output, "Checking for updates...\n", omax);
+        safe_append(output, "AlJefra OS v1.0 is the current version.\n", omax);
+
+        const driver_ops_t *net = driver_get_network();
+        if (net) {
+            safe_append(output,
+                "Network is available. The marketplace can be queried for\n"
+                "driver and system updates via the AI bootstrap module.", omax);
+        } else {
+            safe_append(output,
+                "No network connection. Connect to a network first to "
+                "check for updates.", omax);
+        }
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_SYS_UPTIME: {
+        uint64_t ms = hal_timer_ms();
+        uint64_t secs  = ms / 1000;
+        uint64_t mins  = secs / 60;
+        uint64_t hours = mins / 60;
+        uint64_t days  = hours / 24;
+
+        char num[21];
+        safe_copy(output, "System uptime: ", omax);
+
+        if (days > 0) {
+            fmt_u64(num, sizeof(num), days);
+            safe_append(output, num, omax);
+            safe_append(output, " day(s), ", omax);
+        }
+
+        fmt_u64(num, sizeof(num), hours % 24);
+        safe_append(output, num, omax);
+        safe_append(output, "h ", omax);
+
+        fmt_u64(num, sizeof(num), mins % 60);
+        safe_append(output, num, omax);
+        safe_append(output, "m ", omax);
+
+        fmt_u64(num, sizeof(num), secs % 60);
+        safe_append(output, num, omax);
+        safe_append(output, "s", omax);
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_DRIVER_LIST: {
+        const driver_ops_t *drivers[MAX_DRIVERS];
+        uint32_t count = driver_list(drivers, MAX_DRIVERS);
+
+        if (count == 0) {
+            safe_copy(output, "No drivers currently loaded.", omax);
+            return 0;
+        }
+
+        char num[21];
+        fmt_u64(num, sizeof(num), (uint64_t)count);
+        safe_copy(output, num, omax);
+        safe_append(output, " driver(s) loaded:\n", omax);
+
+        static const char * const cat_names[] = {
+            "storage", "network", "input", "display", "gpu", "bus", "other"
+        };
+
+        for (uint32_t i = 0; i < count; i++) {
+            safe_append(output, "  ", omax);
+            safe_append(output,
+                drivers[i]->name ? drivers[i]->name : "(unnamed)", omax);
+            safe_append(output, " [", omax);
+
+            int cat = (int)drivers[i]->category;
+            if (cat >= 0 && cat <= 6)
+                safe_append(output, cat_names[cat], omax);
+            else
+                safe_append(output, "unknown", omax);
+
+            safe_append(output, "]\n", omax);
+        }
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_DRIVER_SEARCH: {
+        safe_copy(output, "Searching marketplace for drivers", omax);
+        if (action->args[0]) {
+            safe_append(output, " matching '", omax);
+            safe_append(output, action->args, omax);
+            safe_append(output, "'", omax);
+        }
+        safe_append(output, "...\n", omax);
+
+        const driver_ops_t *net = driver_get_network();
+        if (!net) {
+            safe_append(output,
+                "Error: no network connection. Cannot reach the marketplace.",
+                omax);
+            return -1;
+        }
+
+        safe_append(output,
+            "The AI bootstrap module will query the AlJefra marketplace\n"
+            "at os.aljefra.com/api/v1/drivers for matching .ajdrv packages.",
+            omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_DRIVER_INSTALL: {
+        if (action->args[0] == '\0') {
+            safe_copy(output,
+                "Error: specify a driver name to install.", omax);
+            return -1;
+        }
+
+        safe_copy(output, "Driver installation for '", omax);
+        safe_append(output, action->args, omax);
+        safe_append(output, "' requested.\n", omax);
+
+        const driver_ops_t *net = driver_get_network();
+        if (!net) {
+            safe_append(output,
+                "Error: no network connection. Cannot download from marketplace.",
+                omax);
+            return -1;
+        }
+
+        safe_append(output,
+            "The AI bootstrap module will download, verify (Ed25519),\n"
+            "and load the .ajdrv package at runtime.", omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_DISPLAY_SET: {
+        hal_console_type_t ctype = hal_console_type();
+
+        safe_copy(output, "Display Settings:\n", omax);
+        safe_append(output, "  Console backend: ", omax);
+
+        switch (ctype) {
+        case HAL_CONSOLE_SERIAL:
+            safe_append(output, "Serial (UART)\n", omax);
+            safe_append(output,
+                "  Resolution changes are not applicable in serial mode.\n",
+                omax);
+            break;
+        case HAL_CONSOLE_VGA:
+            safe_append(output, "VGA text mode (80x25)\n", omax);
+            safe_append(output,
+                "  VGA text mode does not support resolution changes.\n"
+                "  A framebuffer driver is needed for graphical modes.\n",
+                omax);
+            break;
+        case HAL_CONSOLE_LFB:
+            safe_append(output, "Framebuffer (graphical)\n", omax);
+            safe_append(output,
+                "  Resolution and brightness can be adjusted through the "
+                "display driver.\n", omax);
+            break;
+        }
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_TASK_LIST: {
+        safe_copy(output, "Task List:\n", omax);
+        safe_append(output, "  [0] kernel (running)\n", omax);
+        safe_append(output, "  [1] ai_chat (active)\n", omax);
+
+        uint32_t cores = hal_cpu_count();
+        char num[21];
+        safe_append(output, "CPU cores online: ", omax);
+        fmt_u64(num, sizeof(num), (uint64_t)cores);
+        safe_append(output, num, omax);
+        safe_append(output, "\n", omax);
+        safe_append(output,
+            "The scheduler manages cooperative tasks on all available cores.",
+            omax);
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_MEMORY_INFO: {
+        uint64_t total    = hal_mmu_total_ram();
+        uint64_t free_ram = hal_mmu_free_ram();
+        uint64_t used     = (total > free_ram) ? (total - free_ram) : 0;
+
+        char num[21];
+
+        safe_copy(output, "Memory Information:\n", omax);
+
+        safe_append(output, "  Total RAM: ", omax);
+        fmt_u64(num, sizeof(num), total / (1024 * 1024));
+        safe_append(output, num, omax);
+        safe_append(output, " MB\n", omax);
+
+        safe_append(output, "  Used:      ", omax);
+        fmt_u64(num, sizeof(num), used / (1024 * 1024));
+        safe_append(output, num, omax);
+        safe_append(output, " MB\n", omax);
+
+        safe_append(output, "  Free:      ", omax);
+        fmt_u64(num, sizeof(num), free_ram / (1024 * 1024));
+        safe_append(output, num, omax);
+        safe_append(output, " MB\n", omax);
+
+        /* Usage percentage (avoid divide-by-zero) */
+        if (total > 0) {
+            uint64_t pct = (used * 100) / total;
+            safe_append(output, "  Usage:     ", omax);
+            fmt_u64(num, sizeof(num), pct);
+            safe_append(output, num, omax);
+            safe_append(output, "%\n", omax);
+        }
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_HELP: {
+        safe_copy(output,
+            "AlJefra OS AI Assistant - Available Commands:\n"
+            "\n"
+            "Files:\n"
+            "  show files / list files  - List all files on disk\n"
+            "  open <name>              - Read a file\n"
+            "  create <name>            - Create a new file\n"
+            "  delete <name>            - Delete a file (needs confirmation)\n"
+            "\n"
+            "Network:\n"
+            "  network status           - Show NIC and connection info\n"
+            "  connect                  - Initiate network connection\n"
+            "\n"
+            "System:\n"
+            "  system info              - CPU, RAM, architecture details\n"
+            "  uptime                   - How long the system has been running\n"
+            "  reboot                   - Restart the system\n"
+            "  shutdown                 - Power off the system\n"
+            "  update                   - Check for OS/driver updates\n"
+            "\n"
+            "Drivers:\n"
+            "  list drivers             - Show loaded drivers\n"
+            "  search driver <name>     - Search marketplace\n"
+            "  install driver <name>    - Install from marketplace\n"
+            "\n"
+            "Display:\n"
+            "  display settings         - Show display configuration\n"
+            "\n"
+            "Other:\n"
+            "  memory                   - Show RAM usage\n"
+            "  list tasks               - Show running tasks\n"
+            "  help                     - This help message\n"
+            "\n",
+            omax);
+
+        /* Arabic commands summary */
+        safe_append(output,
+            /* الأوامر بالعربية: */
+            "\xd8\xa7\xd9\x84\xd8\xa3\xd9\x88\xd8\xa7\xd9\x85\xd8\xb1"
+            " \xd8\xa8\xd8\xa7\xd9\x84\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a\xd8\xa9:\n"
+            /* اعرض الملفات، افتح، احذف، حالة الشبكة، معلومات النظام، مساعدة */
+            "  \xd8\xa7\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa"
+            ", \xd8\xa7\xd9\x81\xd8\xaa\xd8\xad"
+            ", \xd8\xa7\xd8\xad\xd8\xb0\xd9\x81"
+            ", \xd8\xad\xd8\xa7\xd9\x84\xd8\xa9 \xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9"
+            ", \xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85"
+            ", \xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9"
+            "\n",
+            omax);
+
+        return 0;
+    }
+
+    /* ------------------------------------------------------------------ */
+    case ACTION_NONE:
+    default:
+        safe_copy(output,
+            "I did not understand that command. "
+            "Type 'help' for a list of available commands.", omax);
+        return 0;
+    }
+}
+
+/* ========================================================================
+ * ai_get_context -- Build LLM System Prompt
+ *
+ * Produces a text string describing the current OS state: architecture,
+ * CPU, RAM, uptime, loaded drivers, network status, available actions,
+ * and recent conversation history.  This is sent to the LLM as the
+ * system prompt so it has full context about the running system.
+ * ======================================================================== */
+
+int ai_get_context(char *buf, int size)
+{
+    if (!buf || size <= 0)
+        return -1;
+
+    buf[0] = '\0';
+    uint32_t smax = (uint32_t)size;
+
+    safe_copy(buf,
+        "You are the AlJefra OS AI assistant, embedded in a bare-metal "
+        "operating system.\n"
+        "AlJefra OS v1.0 is a universal boot OS that runs on x86-64, "
+        "ARM64, and RISC-V.\n\n",
+        smax);
+
+    /* Architecture */
+    safe_append(buf, "Current architecture: ", smax);
+    switch (hal_arch()) {
+    case HAL_ARCH_X86_64:  safe_append(buf, "x86-64\n", smax);  break;
+    case HAL_ARCH_AARCH64: safe_append(buf, "AArch64\n", smax); break;
+    case HAL_ARCH_RISCV64: safe_append(buf, "RISC-V 64\n", smax); break;
+    }
+
+    /* CPU info */
+    hal_cpu_info_t cpu;
+    hal_cpu_get_info(&cpu);
+    safe_append(buf, "CPU: ", smax);
+    safe_append(buf, cpu.model, smax);
+    safe_append(buf, "\n", smax);
+
+    /* RAM */
+    char num[21];
+    uint64_t total_mb = hal_mmu_total_ram() / (1024 * 1024);
+    safe_append(buf, "RAM: ", smax);
+    fmt_u64(num, sizeof(num), total_mb);
+    safe_append(buf, num, smax);
+    safe_append(buf, " MB\n", smax);
+
+    /* Uptime */
+    uint64_t secs = hal_timer_ms() / 1000;
+    safe_append(buf, "Uptime: ", smax);
+    fmt_u64(num, sizeof(num), secs);
+    safe_append(buf, num, smax);
+    safe_append(buf, " seconds\n", smax);
+
+    /* Loaded drivers */
+    const driver_ops_t *drivers[MAX_DRIVERS];
+    uint32_t drv_count = driver_list(drivers, MAX_DRIVERS);
+    safe_append(buf, "Loaded drivers: ", smax);
+    fmt_u64(num, sizeof(num), (uint64_t)drv_count);
+    safe_append(buf, num, smax);
+    safe_append(buf, "\n", smax);
+
+    /* Network status */
+    const driver_ops_t *net = driver_get_network();
+    safe_append(buf, "Network: ", smax);
+    safe_append(buf, net ? "connected\n" : "offline\n", smax);
+
+    /* Session stats */
+    safe_append(buf, "Session commands executed: ", smax);
+    fmt_u64(num, sizeof(num), (uint64_t)g_session.commands_executed);
+    safe_append(buf, num, smax);
+    safe_append(buf, "\n", smax);
+
+    safe_append(buf, "Detected language: ", smax);
+    safe_append(buf, g_session.language, smax);
+    safe_append(buf, "\n\n", smax);
+
+    /* Available actions for LLM to suggest */
+    safe_append(buf,
+        "Available actions you can suggest:\n"
+        "  fs_list, fs_read, fs_write, fs_create, fs_delete,\n"
+        "  net_status, net_connect,\n"
+        "  driver_list, driver_search, driver_install,\n"
+        "  sys_info, sys_reboot, sys_shutdown, sys_update, sys_uptime,\n"
+        "  display_set, task_list, memory_info, help\n"
+        "\n"
+        "To suggest an action, include 'ACTION: <name>' in your response.\n"
+        "To include an argument, add 'ARG: <value>'.\n\n",
+        smax);
+
+    /* Recent conversation history (last 6 messages) */
+    if (g_session.history_count > 0) {
+        safe_append(buf, "Recent conversation:\n", smax);
+
+        uint32_t start = 0;
+        if (g_session.history_count > 6)
+            start = g_session.history_count - 6;
+
+        for (uint32_t i = start; i < g_session.history_count; i++) {
+            const chat_message_t *msg = history_get(i);
+            if (!msg)
+                continue;
+
+            safe_append(buf,
+                msg->is_user ? "  User: " : "  Assistant: ", smax);
+
+            /* Truncate long messages to keep context compact */
+            uint32_t mlen = str_len(msg->text);
+            if (mlen > 120) {
+                char snippet[128];
+                safe_copy(snippet, msg->text, 121);
+                safe_append(snippet, "...", sizeof(snippet));
+                safe_append(buf, snippet, smax);
+            } else {
+                safe_append(buf, msg->text, smax);
+            }
+            safe_append(buf, "\n", smax);
+        }
+    }
+
+    return (int)str_len(buf);
+}
+
+/* ========================================================================
+ * ai_format_response -- User-Friendly Response Formatting
+ *
+ * Wraps the raw action result with a language-appropriate prefix.
+ * English gets English headers; Arabic gets Arabic headers.
+ * ======================================================================== */
+
+int ai_format_response(const ai_action_t *action, const char *raw_result,
+                       const char *lang, char *out, int out_size)
+{
+    if (!action || !raw_result || !out || out_size <= 0)
+        return -1;
+
+    out[0] = '\0';
+    uint32_t omax = (uint32_t)out_size;
+    int is_ar = (lang && lang[0] == 'a' && lang[1] == 'r');
+
+    /* Choose a friendly prefix based on action type and language */
+    switch (action->type) {
+
+    case ACTION_FS_LIST:
+        if (is_ar)
+            safe_copy(out,
+                /* ملفاتك هي: */
+                "\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa\xd9\x83 "
+                "\xd9\x87\xd9\x8a:\n", omax);
+        else
+            safe_copy(out, "Here are your files:\n", omax);
+        break;
+
+    case ACTION_FS_READ:
+        if (is_ar)
+            safe_copy(out,
+                /* محتوى الملف: */
+                "\xd9\x85\xd8\xad\xd8\xaa\xd9\x88\xd9\x89 "
+                "\xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81:\n", omax);
+        else
+            safe_copy(out, "File contents:\n", omax);
+        break;
+
+    case ACTION_FS_CREATE:
+        if (is_ar)
+            safe_copy(out,
+                /* تم بنجاح: */
+                "\xd8\xaa\xd9\x85 \xd8\xa8\xd9\x86\xd8\xac\xd8\xa7\xd8\xad: ",
+                omax);
+        else
+            safe_copy(out, "Success: ", omax);
+        break;
+
+    case ACTION_FS_DELETE:
+        if (is_ar)
+            safe_copy(out,
+                /* تم الحذف: */
+                "\xd8\xaa\xd9\x85 \xd8\xa7\xd9\x84\xd8\xad\xd8\xb0\xd9\x81: ",
+                omax);
+        else
+            safe_copy(out, "Deleted: ", omax);
+        break;
+
+    case ACTION_NET_STATUS:
+        if (is_ar)
+            safe_copy(out,
+                /* حالة الشبكة: */
+                "\xd8\xad\xd8\xa7\xd9\x84\xd8\xa9 "
+                "\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9:\n", omax);
+        else
+            safe_copy(out, "Network status:\n", omax);
+        break;
+
+    case ACTION_SYS_INFO:
+        if (is_ar)
+            safe_copy(out,
+                /* معلومات النظام: */
+                "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa "
+                "\xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85:\n", omax);
+        else
+            safe_copy(out, "System information:\n", omax);
+        break;
+
+    case ACTION_SYS_REBOOT:
+        if (is_ar)
+            safe_copy(out,
+                /* جاري إعادة التشغيل... */
+                "\xd8\xac\xd8\xa7\xd8\xb1\xd9\x8a "
+                "\xd8\xa5\xd8\xb9\xd8\xa7\xd8\xaf\xd8\xa9 "
+                "\xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84...\n",
+                omax);
+        else
+            safe_copy(out, "Rebooting...\n", omax);
+        break;
+
+    case ACTION_SYS_SHUTDOWN:
+        if (is_ar)
+            safe_copy(out,
+                /* جاري الإغلاق... */
+                "\xd8\xac\xd8\xa7\xd8\xb1\xd9\x8a "
+                "\xd8\xa7\xd9\x84\xd8\xa5\xd8\xba\xd9\x84\xd8\xa7\xd9\x82...\n",
+                omax);
+        else
+            safe_copy(out, "Shutting down...\n", omax);
+        break;
+
+    case ACTION_MEMORY_INFO:
+        if (is_ar)
+            safe_copy(out,
+                /* معلومات الذاكرة: */
+                "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa "
+                "\xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9:\n",
+                omax);
+        else
+            safe_copy(out, "Memory information:\n", omax);
+        break;
+
+    case ACTION_HELP:
+        if (is_ar)
+            safe_copy(out,
+                /* المساعدة: */
+                "\xd8\xa7\xd9\x84\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9:\n",
+                omax);
+        else
+            /* Help output already has its own header; no extra prefix */
+            out[0] = '\0';
+        break;
+
+    case ACTION_DRIVER_LIST:
+        if (is_ar)
+            safe_copy(out,
+                /* السائقين المحملين: */
+                "\xd8\xa7\xd9\x84\xd8\xb3\xd8\xa7\xd8\xa6\xd9\x82\xd9\x8a\xd9\x86 "
+                "\xd8\xa7\xd9\x84\xd9\x85\xd8\xad\xd9\x85\xd9\x84\xd9\x8a\xd9\x86:\n",
+                omax);
+        else
+            safe_copy(out, "Loaded drivers:\n", omax);
+        break;
+
+    case ACTION_SYS_UPTIME:
+        if (is_ar)
+            safe_copy(out,
+                /* وقت التشغيل: */
+                "\xd9\x88\xd9\x82\xd8\xaa "
+                "\xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84:\n",
+                omax);
+        else
+            /* Uptime result is self-describing; no extra prefix */
+            out[0] = '\0';
+        break;
+
+    default:
+        /* No special prefix for other action types */
+        break;
+    }
+
+    /* Append the raw action result */
+    safe_append(out, raw_result, omax);
+
+    return (int)str_len(out);
+}
+
+/* ========================================================================
+ * ai_chat_init -- Initialize the AI Chat Engine
+ * ======================================================================== */
+
+int ai_chat_init(void)
+{
+    memset(&g_session, 0, sizeof(g_session));
+
+    g_session.initialized      = 1;
+    g_session.llm_send         = (ai_llm_send_fn)0;
+    g_session.history_count    = 0;
+    g_session.history_head     = 0;
+    g_session.session_start_ms = hal_timer_ms();
+    g_session.commands_executed = 0;
+    g_session.llm_calls        = 0;
+    g_session.username[0]      = '\0';
+
+    /* Default language: English */
+    g_session.language[0] = 'e';
+    g_session.language[1] = 'n';
+    g_session.language[2] = '\0';
+
+    hal_console_puts("[ai_chat] AI chat engine initialized\n");
+    return 0;
+}
+
+/* ========================================================================
+ * ai_chat_set_llm_callback
+ * ======================================================================== */
+
+void ai_chat_set_llm_callback(ai_llm_send_fn fn)
+{
+    g_session.llm_send = fn;
+
+    if (fn)
+        hal_console_puts("[ai_chat] LLM callback registered (online mode)\n");
+    else
+        hal_console_puts("[ai_chat] LLM callback cleared (offline mode)\n");
+}
+
+/* ========================================================================
+ * ai_chat_get_session
  * ======================================================================== */
 
 const ai_chat_session_t *ai_chat_get_session(void)
@@ -400,1532 +1598,78 @@ const ai_chat_session_t *ai_chat_get_session(void)
     return &g_session;
 }
 
-int ai_chat_init(void)
-{
-    memset(&g_session, 0, sizeof(g_session));
-    g_session.session_start_ms = hal_timer_ms();
-    g_session.initialized = 1;
-    str_copy(g_session.language, "en", sizeof(g_session.language));
-    str_copy(g_session.username, "user", sizeof(g_session.username));
-    return 0;
-}
-
-void ai_chat_set_llm_callback(ai_llm_send_fn fn)
-{
-    g_session.llm_send = fn;
-}
-
-/* Add a message to conversation history (ring buffer) */
-static void history_add(int is_user, const char *text)
-{
-    uint32_t idx = g_session.history_head;
-    g_session.history[idx].is_user = is_user;
-    str_copy(g_session.history[idx].text, text,
-             sizeof(g_session.history[idx].text));
-
-    g_session.history_head = (g_session.history_head + 1) % AI_CHAT_HISTORY_MAX;
-    if (g_session.history_count < AI_CHAT_HISTORY_MAX)
-        g_session.history_count++;
-}
-
 /* ========================================================================
- * Natural Language Parser -- English patterns
+ * ai_chat_process -- Main Chat Processing Pipeline
  *
- * Each pattern is: { keywords[], action_type, needs_confirm, has_arg }
- * We match greedily: if any keyword set matches, use that action.
+ * Flow:
+ *   1. Detect language (English / Arabic)
+ *   2. Add user message to history
+ *   3. Local NLP parse -- try to match a known command pattern
+ *   4. If ACTION_NONE and LLM callback is set, build context and forward
+ *      to LLM; parse LLM response for an action suggestion
+ *   5. If action needs confirmation, return a confirmation prompt
+ *   6. Execute the action via ai_execute_action()
+ *   7. Format the result into a user-friendly response
+ *   8. Add assistant response to history
  * ======================================================================== */
 
-/* A rule in the local NLP table */
-typedef struct {
-    const char   *keywords[4];   /* Up to 4 alternative keywords (NULL-terminated) */
-    action_type_t type;
-    int           needs_confirm;
-    int           has_arg;       /* 1 = extract argument after keyword */
-    const char   *arg_keyword;   /* Which keyword precedes the argument */
-} nlp_rule_t;
+/* Static intermediate buffers (no heap allocation) */
+static char g_raw_result[AI_CHAT_RESPONSE_MAX];
+static char g_llm_context[2048];
+static char g_llm_response[AI_CHAT_RESPONSE_MAX];
 
-static const nlp_rule_t g_english_rules[] = {
-    /* ---- Filesystem ---- */
-    { { "ls",     "dir",       NULL },       ACTION_FS_LIST,    0, 0, NULL },
-    { { "cat",    NULL },                    ACTION_FS_READ,    0, 1, "cat" },
-    { { "rm",     NULL },                    ACTION_FS_DELETE,   1, 1, "rm" },
-    { { "touch",  NULL },                    ACTION_FS_CREATE,   0, 1, "touch" },
-    { { "write",  NULL },                    ACTION_FS_WRITE,    0, 1, "write" },
-
-    /* ---- Network ---- */
-    { { "ifconfig", "ipconfig", NULL },      ACTION_NET_STATUS,  0, 0, NULL },
-    { { "dhcp",   NULL },                    ACTION_NET_CONNECT, 0, 0, NULL },
-    { { "ping",   NULL },                    ACTION_NET_STATUS,  0, 0, NULL },
-
-    /* ---- Drivers ---- */
-    { { "lsmod",  "modprobe",  NULL },       ACTION_DRIVER_LIST, 0, 0, NULL },
-    { { "insmod", NULL },                    ACTION_DRIVER_INSTALL, 0, 1, "insmod" },
-
-    /* ---- System ---- */
-    { { "uname",  NULL },                    ACTION_SYS_INFO,    0, 0, NULL },
-    { { "reboot", NULL },                    ACTION_SYS_REBOOT,  1, 0, NULL },
-    { { "halt",   "poweroff", "shutdown", NULL }, ACTION_SYS_SHUTDOWN, 1, 0, NULL },
-    { { "uptime", NULL },                    ACTION_SYS_UPTIME,  0, 0, NULL },
-    { { "free",   NULL },                    ACTION_MEMORY_INFO, 0, 0, NULL },
-    { { "ps",     NULL },                    ACTION_TASK_LIST,   0, 0, NULL },
-
-    /* ---- Help ---- */
-    { { "help",   "?",        "man",  NULL }, ACTION_HELP,       0, 0, NULL },
-};
-
-#define ENGLISH_RULE_COUNT  (sizeof(g_english_rules) / sizeof(g_english_rules[0]))
-
-/* Natural language phrase patterns (not single-word commands) */
-typedef struct {
-    const char   *phrases[6]; /* Alternative phrases (NULL-terminated) */
-    action_type_t type;
-    int           needs_confirm;
-    int           has_arg;
-    const char   *arg_after;  /* Extract arg after this phrase */
-} nlp_phrase_t;
-
-static const nlp_phrase_t g_english_phrases[] = {
-    /* ---- Filesystem ---- */
-    { { "list files",  "show files",  "list file",  "show file", NULL },
-      ACTION_FS_LIST,    0, 0, NULL },
-    { { "read file",   "open file",   "view file",  "show me",  NULL },
-      ACTION_FS_READ,    0, 1, "file" },
-    { { "write file",  "save file",   "create file", "new file", "make file", NULL },
-      ACTION_FS_WRITE,   0, 1, "file" },
-    { { "delete file", "remove file", "erase file", NULL },
-      ACTION_FS_DELETE,  1, 1, "file" },
-
-    /* ---- Network ---- */
-    { { "network status", "net status", "show network",  "show net", "network info", NULL },
-      ACTION_NET_STATUS,  0, 0, NULL },
-    { { "connect network", "connect to network", "connect wifi",
-        "join network", "get ip", NULL },
-      ACTION_NET_CONNECT, 0, 0, NULL },
-
-    /* ---- Drivers ---- */
-    { { "list drivers",  "show drivers",  "loaded drivers",
-        "driver list", NULL },
-      ACTION_DRIVER_LIST, 0, 0, NULL },
-    { { "search driver", "find driver",  "look for driver", NULL },
-      ACTION_DRIVER_SEARCH, 0, 1, "driver" },
-    { { "install driver", "add driver", "load driver", NULL },
-      ACTION_DRIVER_INSTALL, 0, 1, "driver" },
-
-    /* ---- System ---- */
-    { { "system info",  "sysinfo",   "system information",
-        "about system", "os info", NULL },
-      ACTION_SYS_INFO,    0, 0, NULL },
-    { { "reboot system", "restart system", "restart computer",
-        "restart", NULL },
-      ACTION_SYS_REBOOT,  1, 0, NULL },
-    { { "shut down", "power off", "turn off", NULL },
-      ACTION_SYS_SHUTDOWN, 1, 0, NULL },
-    { { "check update", "check for update", "system update",
-        "os update", NULL },
-      ACTION_SYS_UPDATE,   0, 0, NULL },
-    { { "show uptime", "how long running", "uptime", NULL },
-      ACTION_SYS_UPTIME,   0, 0, NULL },
-    { { "memory info", "memory status", "ram info", "show memory",
-        "how much ram", "how much memory" },
-      ACTION_MEMORY_INFO,  0, 0, NULL },
-    { { "display settings", "screen settings", "change resolution",
-        "set display", NULL },
-      ACTION_DISPLAY_SET,  0, 1, "display" },
-    { { "list tasks", "show tasks", "show processes", "running tasks", NULL },
-      ACTION_TASK_LIST,    0, 0, NULL },
-
-    /* ---- Help ---- */
-    { { "what can you do", "help me", "show help",
-        "how to use", "commands", NULL },
-      ACTION_HELP,          0, 0, NULL },
-};
-
-#define ENGLISH_PHRASE_COUNT  (sizeof(g_english_phrases) / sizeof(g_english_phrases[0]))
-
-/* ========================================================================
- * Natural Language Parser -- Arabic patterns
- *
- * Arabic keywords stored as UTF-8 byte sequences.
- * ======================================================================== */
-
-/* Arabic command words mapped to actions */
-typedef struct {
-    const char   *word;         /* UTF-8 Arabic keyword or phrase */
-    action_type_t type;
-    int           needs_confirm;
-} arabic_rule_t;
-
-/* UTF-8 encoded Arabic strings for common commands */
-static const arabic_rule_t g_arabic_rules[] = {
-    /* عرض الملفات (show files) */
-    { "\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa",   ACTION_FS_LIST,    0 },
-    /* الملفات (files) */
-    { "\xd8\xa7\xd9\x84\xd9\x85\xd9\x84\xd9\x81\xd8\xa7\xd8\xaa",                               ACTION_FS_LIST,    0 },
-    /* قراءة (read) */
-    { "\xd9\x82\xd8\xb1\xd8\xa7\xd8\xa1\xd8\xa9",                                                 ACTION_FS_READ,    0 },
-    /* اقرأ (read - imperative) */
-    { "\xd8\xa7\xd9\x82\xd8\xb1\xd8\xa3",                                                          ACTION_FS_READ,    0 },
-    /* حذف (delete) */
-    { "\xd8\xad\xd8\xb0\xd9\x81",                                                                   ACTION_FS_DELETE,  1 },
-    /* احذف (delete - imperative) */
-    { "\xd8\xa7\xd8\xad\xd8\xb0\xd9\x81",                                                          ACTION_FS_DELETE,  1 },
-    /* إنشاء (create) */
-    { "\xd8\xa5\xd9\x86\xd8\xb4\xd8\xa7\xd8\xa1",                                                  ACTION_FS_CREATE,  0 },
-    /* أنشئ (create - imperative) */
-    { "\xd8\xa3\xd9\x86\xd8\xb4\xd8\xa6",                                                          ACTION_FS_CREATE,  0 },
-    /* كتابة (write) */
-    { "\xd9\x83\xd8\xaa\xd8\xa7\xd8\xa8\xd8\xa9",                                                  ACTION_FS_WRITE,   0 },
-    /* اكتب (write - imperative) */
-    { "\xd8\xa7\xd9\x83\xd8\xaa\xd8\xa8",                                                          ACTION_FS_WRITE,   0 },
-
-    /* حالة الشبكة (network status) */
-    { "\xd8\xad\xd8\xa7\xd9\x84\xd8\xa9 \xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9",     ACTION_NET_STATUS,  0 },
-    /* الشبكة (network) */
-    { "\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa8\xd9\x83\xd8\xa9",                                         ACTION_NET_STATUS,  0 },
-    /* اتصال (connect) */
-    { "\xd8\xa7\xd8\xaa\xd8\xb5\xd8\xa7\xd9\x84",                                                  ACTION_NET_CONNECT, 0 },
-    /* اتصل (connect - imperative) */
-    { "\xd8\xa7\xd8\xaa\xd8\xb5\xd9\x84",                                                          ACTION_NET_CONNECT, 0 },
-
-    /* التعريفات (drivers) */
-    { "\xd8\xa7\xd9\x84\xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81\xd8\xa7\xd8\xaa",              ACTION_DRIVER_LIST, 0 },
-    /* عرض التعريفات (show drivers) */
-    { "\xd8\xb9\xd8\xb1\xd8\xb6 \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81\xd8\xa7\xd8\xaa", ACTION_DRIVER_LIST, 0 },
-    /* تثبيت تعريف (install driver) */
-    { "\xd8\xaa\xd8\xab\xd8\xa8\xd9\x8a\xd8\xaa \xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81",    ACTION_DRIVER_INSTALL, 0 },
-    /* بحث عن تعريف (search for driver) */
-    { "\xd8\xa8\xd8\xad\xd8\xab \xd8\xb9\xd9\x86 \xd8\xaa\xd8\xb9\xd8\xb1\xd9\x8a\xd9\x81",   ACTION_DRIVER_SEARCH, 0 },
-
-    /* معلومات النظام (system info) */
-    { "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85", ACTION_SYS_INFO, 0 },
-    /* النظام (system) */
-    { "\xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85",                                         ACTION_SYS_INFO,    0 },
-    /* إعادة تشغيل (reboot) */
-    { "\xd8\xa5\xd8\xb9\xd8\xa7\xd8\xaf\xd8\xa9 \xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84",    ACTION_SYS_REBOOT,  1 },
-    /* أعد التشغيل (reboot - imperative) */
-    { "\xd8\xa3\xd8\xb9\xd8\xaf \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84",    ACTION_SYS_REBOOT,  1 },
-    /* إيقاف (halt/shutdown) */
-    { "\xd8\xa5\xd9\x8a\xd9\x82\xd8\xa7\xd9\x81",                                                  ACTION_SYS_SHUTDOWN, 1 },
-    /* أوقف النظام (shut down system) */
-    { "\xd8\xa3\xd9\x88\xd9\x82\xd9\x81 \xd8\xa7\xd9\x84\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85",    ACTION_SYS_SHUTDOWN, 1 },
-    /* تحديث (update) */
-    { "\xd8\xaa\xd8\xad\xd8\xaf\xd9\x8a\xd8\xab",                                                  ACTION_SYS_UPDATE,  0 },
-    /* البحث عن تحديثات (check for updates) */
-    { "\xd8\xa7\xd9\x84\xd8\xa8\xd8\xad\xd8\xab \xd8\xb9\xd9\x86 \xd8\xaa\xd8\xad\xd8\xaf\xd9\x8a\xd8\xab\xd8\xa7\xd8\xaa", ACTION_SYS_UPDATE, 0 },
-
-    /* وقت التشغيل (uptime) */
-    { "\xd9\x88\xd9\x82\xd8\xaa \xd8\xa7\xd9\x84\xd8\xaa\xd8\xb4\xd8\xba\xd9\x8a\xd9\x84",    ACTION_SYS_UPTIME,  0 },
-    /* الذاكرة (memory) */
-    { "\xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9",                                ACTION_MEMORY_INFO, 0 },
-    /* معلومات الذاكرة (memory info) */
-    { "\xd9\x85\xd8\xb9\xd9\x84\xd9\x88\xd9\x85\xd8\xa7\xd8\xaa \xd8\xa7\xd9\x84\xd8\xb0\xd8\xa7\xd9\x83\xd8\xb1\xd8\xa9", ACTION_MEMORY_INFO, 0 },
-
-    /* المهام (tasks) */
-    { "\xd8\xa7\xd9\x84\xd9\x85\xd9\x87\xd8\xa7\xd9\x85",                                         ACTION_TASK_LIST,   0 },
-    /* الشاشة (display) */
-    { "\xd8\xa7\xd9\x84\xd8\xb4\xd8\xa7\xd8\xb4\xd8\xa9",                                         ACTION_DISPLAY_SET, 0 },
-
-    /* مساعدة (help) */
-    { "\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9",                                         ACTION_HELP,        0 },
-    /* ساعدني (help me) */
-    { "\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd9\x86\xd9\x8a",                                        ACTION_HELP,        0 },
-};
-
-#define ARABIC_RULE_COUNT  (sizeof(g_arabic_rules) / sizeof(g_arabic_rules[0]))
-
-/* ========================================================================
- * Local NLP Parser implementation
- * ======================================================================== */
-
-/* Try to match a single-word Unix-style command */
-static int try_unix_command(const char *input, ai_action_t *action)
+/* Try to parse an action from LLM response text.
+ * Looks for "ACTION: <name>" on a line, and "ARG: <value>".
+ * Returns 1 if an action was parsed, 0 otherwise. */
+static int parse_llm_action(const char *llm_text, ai_action_t *action)
 {
-    /* Extract first token */
-    const char *p = skip_space(input);
-    char cmd[64];
-    uint32_t ci = 0;
-    while (*p && *p != ' ' && *p != '\t' && ci < sizeof(cmd) - 1)
-        cmd[ci++] = *p++;
-    cmd[ci] = '\0';
-
-    if (ci == 0)
-        return 0;
-
-    for (uint32_t i = 0; i < ENGLISH_RULE_COUNT; i++) {
-        const nlp_rule_t *rule = &g_english_rules[i];
-        for (int k = 0; k < 4 && rule->keywords[k]; k++) {
-            if (str_eq_nocase(cmd, rule->keywords[k])) {
-                action->type = rule->type;
-                action->needs_confirm = rule->needs_confirm;
-                action->confidence = 95;
-                action->args[0] = '\0';
-
-                /* Extract argument if needed */
-                if (rule->has_arg && rule->arg_keyword) {
-                    const char *rest = skip_space(p);
-                    if (*rest)
-                        str_copy(action->args, rest, sizeof(action->args));
-                }
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
-/* Try to match a multi-word English phrase */
-static int try_english_phrase(const char *input, ai_action_t *action)
-{
-    for (uint32_t i = 0; i < ENGLISH_PHRASE_COUNT; i++) {
-        const nlp_phrase_t *phrase = &g_english_phrases[i];
-        for (int k = 0; k < 6 && phrase->phrases[k]; k++) {
-            if (contains_substr(input, phrase->phrases[k])) {
-                action->type = phrase->type;
-                action->needs_confirm = phrase->needs_confirm;
-                action->confidence = 85;
-                action->args[0] = '\0';
-
-                /* Extract argument if the phrase has one */
-                if (phrase->has_arg && phrase->arg_after) {
-                    extract_arg_after(input, phrase->arg_after,
-                                      action->args, sizeof(action->args));
-                }
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
-/* Try to match Arabic commands */
-static int try_arabic(const char *input, ai_action_t *action)
-{
-    if (!has_arabic(input))
-        return 0;
-
-    /* Try each Arabic rule -- longest match first (rules are sorted
-     * with multi-word phrases before single words) */
-    for (uint32_t i = 0; i < ARABIC_RULE_COUNT; i++) {
-        const arabic_rule_t *rule = &g_arabic_rules[i];
-        if (contains_substr(input, rule->word)) {
-            action->type = rule->type;
-            action->needs_confirm = rule->needs_confirm;
-            action->confidence = 80;
-            action->args[0] = '\0';
-
-            /* For Arabic commands that take file args, the filename
-             * is typically the non-Arabic portion of the input.
-             * Extract any ASCII token from the input as the argument. */
-            const char *p = input;
-            while (*p) {
-                /* Skip UTF-8 multibyte characters */
-                if ((uint8_t)*p >= 0x80) {
-                    p++;
-                    continue;
-                }
-                /* Skip spaces */
-                if (*p == ' ' || *p == '\t') {
-                    p++;
-                    continue;
-                }
-                /* Found an ASCII token -- grab it */
-                if (*p >= '!' && *p <= '~') {
-                    char arg[256];
-                    uint32_t ai = 0;
-                    while (*p >= '!' && *p <= '~' && ai < sizeof(arg) - 1)
-                        arg[ai++] = *p++;
-                    arg[ai] = '\0';
-
-                    /* Skip the Arabic keyword itself if it got picked up */
-                    if (ai > 0 && (uint8_t)arg[0] < 0x80) {
-                        str_copy(action->args, arg, sizeof(action->args));
-                    }
-                    break;
-                }
-                p++;
-            }
-            return 1;
-        }
-    }
-    return 0;
-}
-
-int ai_parse_local(const char *input, ai_action_t *action)
-{
-    if (!input || !action)
-        return 0;
-
-    /* Initialize action */
     action->type = ACTION_NONE;
     action->args[0] = '\0';
     action->needs_confirm = 0;
-    action->confidence = 0;
+    action->confidence = 60; /* LLM-derived actions get moderate confidence */
 
-    /* Skip leading whitespace */
-    input = skip_space(input);
-    if (!*input)
+    /* Look for "ACTION:" or "action:" */
+    const char *pos = ci_strstr(llm_text, "action:");
+    if (!pos)
+        pos = ci_strstr(llm_text, "action :");
+
+    if (!pos)
         return 0;
 
-    /* 1. Try Unix-style single-word commands (highest priority, exact match) */
-    if (try_unix_command(input, action))
-        return 1;
+    /* Skip past "action:" and optional space */
+    pos += 7;
+    while (*pos == ' ' || *pos == ':')
+        pos++;
 
-    /* 2. Try Arabic commands (check before English phrases since Arabic
-     *    characters are unambiguous) */
-    if (try_arabic(input, action))
-        return 1;
+    /* Extract the action name word */
+    char name[32];
+    extract_arg(pos, name, sizeof(name));
 
-    /* 3. Try English natural language phrases */
-    if (try_english_phrase(input, action))
-        return 1;
+    action->type = ai_action_from_name(name);
+    if (action->type == ACTION_NONE)
+        return 0;
 
-    /* 4. No local match -- return ACTION_NONE so caller can try LLM */
-    return 0;
-}
-
-/* ========================================================================
- * System Context Builder (for LLM system prompt)
- * ======================================================================== */
-
-int ai_get_context(char *buf, int size)
-{
-    int pos = 0;
-
-    buf_append(buf, &pos, size,
-        "You are the AI assistant of AlJefra OS, a universal boot operating system. "
-        "You help the user manage their system via natural language.\n\n"
-        "SYSTEM STATE:\n");
-
-    /* Architecture */
-    buf_append(buf, &pos, size, "Architecture: ");
-    switch (hal_arch()) {
-    case HAL_ARCH_X86_64:  buf_append(buf, &pos, size, "x86-64\n");   break;
-    case HAL_ARCH_AARCH64: buf_append(buf, &pos, size, "AArch64\n");  break;
-    case HAL_ARCH_RISCV64: buf_append(buf, &pos, size, "RISC-V 64\n"); break;
-    }
-
-    /* CPU */
-    hal_cpu_info_t cpu;
-    hal_cpu_get_info(&cpu);
-    buf_append(buf, &pos, size, "CPU: ");
-    buf_append(buf, &pos, size, cpu.model);
-    buf_append(buf, &pos, size, " (");
-    buf_append_uint(buf, &pos, size, cpu.cores_logical);
-    buf_append(buf, &pos, size, " cores)\n");
-
-    /* RAM */
-    uint64_t total_mb = hal_mmu_total_ram() / (1024 * 1024);
-    uint64_t free_mb  = hal_mmu_free_ram() / (1024 * 1024);
-    buf_append(buf, &pos, size, "RAM: ");
-    buf_append_uint(buf, &pos, size, free_mb);
-    buf_append(buf, &pos, size, " MB free / ");
-    buf_append_uint(buf, &pos, size, total_mb);
-    buf_append(buf, &pos, size, " MB total\n");
-
-    /* Uptime */
-    uint64_t uptime_s = (hal_timer_ms() - g_session.session_start_ms) / 1000;
-    buf_append(buf, &pos, size, "Uptime: ");
-    buf_append_uint(buf, &pos, size, uptime_s);
-    buf_append(buf, &pos, size, " seconds\n");
-
-    /* Bootstrap state */
-    buf_append(buf, &pos, size, "Bootstrap: ");
-    switch (ai_bootstrap_state()) {
-    case BOOTSTRAP_INIT:          buf_append(buf, &pos, size, "initializing\n");  break;
-    case BOOTSTRAP_NET_UP:        buf_append(buf, &pos, size, "network up\n");    break;
-    case BOOTSTRAP_CONNECTED:     buf_append(buf, &pos, size, "connected\n");     break;
-    case BOOTSTRAP_MANIFEST_SENT: buf_append(buf, &pos, size, "manifest sent\n"); break;
-    case BOOTSTRAP_DOWNLOADING:   buf_append(buf, &pos, size, "downloading\n");   break;
-    case BOOTSTRAP_COMPLETE:      buf_append(buf, &pos, size, "complete\n");      break;
-    case BOOTSTRAP_FAILED:        buf_append(buf, &pos, size, "failed\n");        break;
-    }
-
-    /* Loaded drivers */
-    buf_append(buf, &pos, size, "\nLOADED DRIVERS:\n");
-    const driver_ops_t *drivers[MAX_DRIVERS];
-    uint32_t drv_count = driver_list(drivers, MAX_DRIVERS);
-    if (drv_count == 0) {
-        buf_append(buf, &pos, size, "  (none)\n");
+    /* Look for "ARG:" or "argument:" */
+    const char *arg_pos = ci_strstr(llm_text, "arg:");
+    if (arg_pos) {
+        arg_pos += 4;
+        extract_rest(arg_pos, action->args, sizeof(action->args));
     } else {
-        for (uint32_t i = 0; i < drv_count; i++) {
-            buf_append(buf, &pos, size, "  - ");
-            buf_append(buf, &pos, size, drivers[i]->name);
-            buf_append(buf, &pos, size, " [");
-            switch (drivers[i]->category) {
-            case DRIVER_CAT_STORAGE: buf_append(buf, &pos, size, "storage"); break;
-            case DRIVER_CAT_NETWORK: buf_append(buf, &pos, size, "network"); break;
-            case DRIVER_CAT_INPUT:   buf_append(buf, &pos, size, "input");   break;
-            case DRIVER_CAT_DISPLAY: buf_append(buf, &pos, size, "display"); break;
-            case DRIVER_CAT_GPU:     buf_append(buf, &pos, size, "gpu");     break;
-            case DRIVER_CAT_BUS:     buf_append(buf, &pos, size, "bus");     break;
-            case DRIVER_CAT_OTHER:   buf_append(buf, &pos, size, "other");   break;
-            }
-            buf_append(buf, &pos, size, "]\n");
+        arg_pos = ci_strstr(llm_text, "argument:");
+        if (arg_pos) {
+            arg_pos += 9;
+            extract_rest(arg_pos, action->args, sizeof(action->args));
         }
     }
 
-    /* Network status */
-    buf_append(buf, &pos, size, "\nNETWORK:\n");
-    const driver_ops_t *net = driver_get_network();
-    if (net) {
-        buf_append(buf, &pos, size, "  NIC: ");
-        buf_append(buf, &pos, size, net->name);
-        buf_append(buf, &pos, size, "\n");
-
-        if (net->net_get_mac) {
-            uint8_t mac[6];
-            net->net_get_mac(mac);
-            buf_append(buf, &pos, size, "  MAC: ");
-            /* Format MAC as hex pairs */
-            const char hex[] = "0123456789abcdef";
-            for (int i = 0; i < 6; i++) {
-                if (i > 0 && pos < size - 1) buf[pos++] = ':';
-                if (pos < size - 2) {
-                    buf[pos++] = hex[(mac[i] >> 4) & 0xF];
-                    buf[pos++] = hex[mac[i] & 0xF];
-                }
-            }
-            buf[pos] = '\0';
-            buf_append(buf, &pos, size, "\n");
-        }
-
-        const dhcp_lease_t *lease = dhcp_get_lease();
-        if (lease && lease->client_ip) {
-            buf_append(buf, &pos, size, "  IP: ");
-            buf_append_uint(buf, &pos, size, (lease->client_ip >> 24) & 0xFF);
-            buf_append(buf, &pos, size, ".");
-            buf_append_uint(buf, &pos, size, (lease->client_ip >> 16) & 0xFF);
-            buf_append(buf, &pos, size, ".");
-            buf_append_uint(buf, &pos, size, (lease->client_ip >> 8) & 0xFF);
-            buf_append(buf, &pos, size, ".");
-            buf_append_uint(buf, &pos, size, lease->client_ip & 0xFF);
-            buf_append(buf, &pos, size, "\n");
-        } else {
-            buf_append(buf, &pos, size, "  IP: not configured\n");
-        }
-    } else {
-        buf_append(buf, &pos, size, "  No network interface\n");
+    /* Flag destructive actions */
+    if (action->type == ACTION_FS_DELETE ||
+        action->type == ACTION_SYS_REBOOT ||
+        action->type == ACTION_SYS_SHUTDOWN) {
+        action->needs_confirm = 1;
     }
 
-    /* Available actions (for the LLM to know what it can invoke) */
-    buf_append(buf, &pos, size,
-        "\nAVAILABLE ACTIONS (respond with JSON):\n"
-        "To execute a system command, respond with exactly one JSON object:\n"
-        "  {\"action\": \"<action_name>\", \"args\": \"<arguments>\"}\n"
-        "To give a text response only:\n"
-        "  {\"text\": \"Your response here\"}\n"
-        "\nAction names:\n");
-
-    for (uint32_t i = 0; i < ACTION_TABLE_SIZE; i++) {
-        if (g_action_table[i].type == ACTION_NONE)
-            continue;
-        buf_append(buf, &pos, size, "  ");
-        buf_append(buf, &pos, size, g_action_table[i].name);
-        buf_append(buf, &pos, size, " - ");
-        buf_append(buf, &pos, size, g_action_table[i].desc_en);
-        buf_append(buf, &pos, size, "\n");
-    }
-
-    /* Recent conversation history for context */
-    if (g_session.history_count > 0) {
-        buf_append(buf, &pos, size, "\nRECENT CONVERSATION:\n");
-
-        uint32_t start;
-        uint32_t count = g_session.history_count;
-        if (count >= AI_CHAT_HISTORY_MAX) {
-            start = g_session.history_head;
-        } else {
-            start = 0;
-        }
-
-        /* Show last 6 messages at most for context */
-        uint32_t show = count < 6 ? count : 6;
-        uint32_t skip = count - show;
-        uint32_t idx = (start + skip) % AI_CHAT_HISTORY_MAX;
-
-        for (uint32_t i = 0; i < show; i++) {
-            const chat_message_t *m = &g_session.history[idx];
-            buf_append(buf, &pos, size, m->is_user ? "User: " : "Assistant: ");
-            buf_append(buf, &pos, size, m->text);
-            buf_append(buf, &pos, size, "\n");
-            idx = (idx + 1) % AI_CHAT_HISTORY_MAX;
-        }
-    }
-
-    buf_append(buf, &pos, size,
-        "\nIMPORTANT: Respond ONLY with valid JSON. "
-        "Do not include markdown or extra text.\n");
-
-    return pos;
-}
-
-/* ========================================================================
- * Action Executor
- * ======================================================================== */
-
-/* Execute ACTION_FS_LIST: list files on storage */
-static int exec_fs_list(char *output, int output_size)
-{
-    int pos = 0;
-
-    const driver_ops_t *stor = driver_get_storage();
-    if (!stor || !stor->read) {
-        buf_append(output, &pos, output_size, "No storage device available.\n");
-        return -1;
-    }
-
-    /* Read the BMFS directory from LBA 8 (standard location).
-     * BMFS directory entries are 64 bytes each, starting at byte 4096.
-     * Entry format: filename[32] + reserved[8] + start_block[8] +
-     *               reserved[8] + file_size[8]
-     */
-    buf_append(output, &pos, output_size, "Files on storage:\n");
-
-    /* Allocate a DMA buffer for reading directory sectors */
-    uint64_t phys;
-    uint8_t *dir_buf = (uint8_t *)hal_dma_alloc(4096, &phys);
-    if (!dir_buf) {
-        buf_append(output, &pos, output_size, "  (failed to allocate buffer)\n");
-        return -1;
-    }
-
-    /* Read directory sectors (LBA 8, 8 sectors = 4096 bytes) */
-    int64_t rd = stor->read(dir_buf, 8, 8);
-    if (rd <= 0) {
-        buf_append(output, &pos, output_size, "  (failed to read directory)\n");
-        hal_dma_free(dir_buf, 4096);
-        return -1;
-    }
-
-    /* Parse BMFS directory entries */
-    int file_count = 0;
-    for (int i = 0; i < 64; i++) { /* Max 64 directory entries */
-        uint8_t *entry = dir_buf + (i * 64);
-
-        /* First byte of filename: 0x00 = empty, 0x01 = deleted */
-        if (entry[0] == 0x00 || entry[0] == 0x01)
-            continue;
-
-        /* Extract filename (32 bytes, null-terminated) */
-        char name[33];
-        memcpy(name, entry, 32);
-        name[32] = '\0';
-
-        /* Extract file size (bytes 56-63, little-endian uint64) */
-        uint64_t fsize = 0;
-        for (int b = 0; b < 8; b++)
-            fsize |= ((uint64_t)entry[56 + b]) << (b * 8);
-
-        buf_append(output, &pos, output_size, "  ");
-        buf_append(output, &pos, output_size, name);
-        buf_append(output, &pos, output_size, "  (");
-        buf_append_uint(output, &pos, output_size, fsize);
-        buf_append(output, &pos, output_size, " bytes)\n");
-        file_count++;
-    }
-
-    if (file_count == 0)
-        buf_append(output, &pos, output_size, "  (no files)\n");
-    else {
-        buf_append_uint(output, &pos, output_size, (uint64_t)file_count);
-        buf_append(output, &pos, output_size, " file(s) total.\n");
-    }
-
-    hal_dma_free(dir_buf, 4096);
-    return 0;
-}
-
-/* Execute ACTION_FS_READ: read a file and display contents */
-static int exec_fs_read(const char *filename, char *output, int output_size)
-{
-    int pos = 0;
-
-    if (!filename || !filename[0]) {
-        buf_append(output, &pos, output_size, "Usage: read <filename>\n");
-        return -1;
-    }
-
-    const driver_ops_t *stor = driver_get_storage();
-    if (!stor || !stor->read) {
-        buf_append(output, &pos, output_size, "No storage device available.\n");
-        return -1;
-    }
-
-    /* Read directory to find the file */
-    uint64_t phys;
-    uint8_t *dir_buf = (uint8_t *)hal_dma_alloc(4096, &phys);
-    if (!dir_buf) {
-        buf_append(output, &pos, output_size, "Failed to allocate buffer.\n");
-        return -1;
-    }
-
-    int64_t rd = stor->read(dir_buf, 8, 8);
-    if (rd <= 0) {
-        buf_append(output, &pos, output_size, "Failed to read directory.\n");
-        hal_dma_free(dir_buf, 4096);
-        return -1;
-    }
-
-    /* Search for the file */
-    uint64_t start_block = 0;
-    uint64_t file_size = 0;
-    int found = 0;
-
-    for (int i = 0; i < 64; i++) {
-        uint8_t *entry = dir_buf + (i * 64);
-        if (entry[0] == 0x00 || entry[0] == 0x01)
-            continue;
-
-        /* Compare filename */
-        char name[33];
-        memcpy(name, entry, 32);
-        name[32] = '\0';
-
-        /* Trim trailing spaces */
-        int len = 31;
-        while (len >= 0 && (name[len] == ' ' || name[len] == '\0'))
-            len--;
-        name[len + 1] = '\0';
-
-        if (str_eq_nocase(name, filename)) {
-            /* Extract start block (bytes 40-47) and size (bytes 56-63) */
-            start_block = 0;
-            for (int b = 0; b < 8; b++)
-                start_block |= ((uint64_t)entry[40 + b]) << (b * 8);
-            file_size = 0;
-            for (int b = 0; b < 8; b++)
-                file_size |= ((uint64_t)entry[56 + b]) << (b * 8);
-            found = 1;
-            break;
-        }
-    }
-
-    hal_dma_free(dir_buf, 4096);
-
-    if (!found) {
-        buf_append(output, &pos, output_size, "File not found: ");
-        buf_append(output, &pos, output_size, filename);
-        buf_append(output, &pos, output_size, "\n");
-        return -1;
-    }
-
-    /* Read file contents (cap at 2KB for display) */
-    uint64_t read_size = file_size;
-    if (read_size > 2048)
-        read_size = 2048;
-
-    uint32_t sectors = (uint32_t)((read_size + 511) / 512);
-    uint8_t *file_buf = (uint8_t *)hal_dma_alloc(sectors * 512, &phys);
-    if (!file_buf) {
-        buf_append(output, &pos, output_size, "Failed to allocate read buffer.\n");
-        return -1;
-    }
-
-    /* BMFS blocks are 1 MB each, starting at LBA offset for data area */
-    uint64_t lba = start_block * 2048; /* 1MB blocks / 512 bytes per sector */
-    rd = stor->read(file_buf, lba, sectors);
-    if (rd <= 0) {
-        buf_append(output, &pos, output_size, "Failed to read file data.\n");
-        hal_dma_free(file_buf, sectors * 512);
-        return -1;
-    }
-
-    /* Display file contents */
-    buf_append(output, &pos, output_size, "--- ");
-    buf_append(output, &pos, output_size, filename);
-    buf_append(output, &pos, output_size, " (");
-    buf_append_uint(output, &pos, output_size, file_size);
-    buf_append(output, &pos, output_size, " bytes) ---\n");
-
-    /* Write file data to output buffer (as text) */
-    for (uint64_t i = 0; i < read_size && pos < output_size - 2; i++) {
-        /* Filter non-printable characters */
-        char c = (char)file_buf[i];
-        if (c == '\n' || c == '\r' || c == '\t' || (c >= ' ' && c <= '~'))
-            output[pos++] = c;
-        else
-            output[pos++] = '.';
-    }
-    output[pos] = '\0';
-
-    if (file_size > 2048) {
-        buf_append(output, &pos, output_size, "\n... (truncated, ");
-        buf_append_uint(output, &pos, output_size, file_size - 2048);
-        buf_append(output, &pos, output_size, " more bytes)\n");
-    } else {
-        buf_append(output, &pos, output_size, "\n--- end ---\n");
-    }
-
-    hal_dma_free(file_buf, sectors * 512);
-    return 0;
-}
-
-/* Execute ACTION_NET_STATUS: show network information */
-static int exec_net_status(char *output, int output_size)
-{
-    int pos = 0;
-
-    const driver_ops_t *net = driver_get_network();
-    if (!net) {
-        buf_append(output, &pos, output_size, "No network interface available.\n");
-        return -1;
-    }
-
-    buf_append(output, &pos, output_size, "Network Status:\n");
-    buf_append(output, &pos, output_size, "  Interface: ");
-    buf_append(output, &pos, output_size, net->name);
-    buf_append(output, &pos, output_size, "\n");
-
-    /* MAC address */
-    if (net->net_get_mac) {
-        uint8_t mac[6];
-        net->net_get_mac(mac);
-        buf_append(output, &pos, output_size, "  MAC: ");
-        const char hex[] = "0123456789abcdef";
-        for (int i = 0; i < 6; i++) {
-            if (i > 0 && pos < output_size - 1) output[pos++] = ':';
-            if (pos < output_size - 2) {
-                output[pos++] = hex[(mac[i] >> 4) & 0xF];
-                output[pos++] = hex[mac[i] & 0xF];
-            }
-        }
-        output[pos] = '\0';
-        buf_append(output, &pos, output_size, "\n");
-    }
-
-    /* IP address from DHCP lease */
-    const dhcp_lease_t *lease = dhcp_get_lease();
-    if (lease && lease->client_ip) {
-        buf_append(output, &pos, output_size, "  IP: ");
-        buf_append_uint(output, &pos, output_size, (lease->client_ip >> 24) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->client_ip >> 16) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->client_ip >> 8) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, lease->client_ip & 0xFF);
-        buf_append(output, &pos, output_size, "\n");
-
-        buf_append(output, &pos, output_size, "  Gateway: ");
-        buf_append_uint(output, &pos, output_size, (lease->gateway >> 24) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->gateway >> 16) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->gateway >> 8) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, lease->gateway & 0xFF);
-        buf_append(output, &pos, output_size, "\n");
-
-        buf_append(output, &pos, output_size, "  DNS: ");
-        buf_append_uint(output, &pos, output_size, (lease->dns_server >> 24) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->dns_server >> 16) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, (lease->dns_server >> 8) & 0xFF);
-        buf_append(output, &pos, output_size, ".");
-        buf_append_uint(output, &pos, output_size, lease->dns_server & 0xFF);
-        buf_append(output, &pos, output_size, "\n");
-
-        buf_append(output, &pos, output_size, "  Lease: ");
-        buf_append_uint(output, &pos, output_size, lease->lease_time);
-        buf_append(output, &pos, output_size, " seconds\n");
-    } else {
-        buf_append(output, &pos, output_size, "  IP: not configured (DHCP not run)\n");
-    }
-
-    buf_append(output, &pos, output_size, "  Status: ");
-    bootstrap_state_t bs = ai_bootstrap_state();
-    if (bs >= BOOTSTRAP_NET_UP)
-        buf_append(output, &pos, output_size, "UP\n");
-    else
-        buf_append(output, &pos, output_size, "DOWN\n");
-
-    return 0;
-}
-
-/* Execute ACTION_NET_CONNECT: trigger DHCP */
-static int exec_net_connect(char *output, int output_size)
-{
-    int pos = 0;
-
-    const driver_ops_t *net = driver_get_network();
-    if (!net) {
-        buf_append(output, &pos, output_size,
-            "No network interface available. Cannot connect.\n");
-        return -1;
-    }
-
-    buf_append(output, &pos, output_size, "Running DHCP discovery...\n");
-
-    uint32_t ip = 0, gateway = 0, dns = 0;
-    hal_status_t rc = dhcp_discover(&ip, &gateway, &dns);
-
-    if (rc != HAL_OK) {
-        buf_append(output, &pos, output_size, "DHCP failed. No network connection.\n");
-        return -1;
-    }
-
-    buf_append(output, &pos, output_size, "Connected! IP: ");
-    buf_append_uint(output, &pos, output_size, (ip >> 24) & 0xFF);
-    buf_append(output, &pos, output_size, ".");
-    buf_append_uint(output, &pos, output_size, (ip >> 16) & 0xFF);
-    buf_append(output, &pos, output_size, ".");
-    buf_append_uint(output, &pos, output_size, (ip >> 8) & 0xFF);
-    buf_append(output, &pos, output_size, ".");
-    buf_append_uint(output, &pos, output_size, ip & 0xFF);
-    buf_append(output, &pos, output_size, "\n");
-
-    /* Reinitialize TCP with new IP */
-    tcp_init(ip, gateway, 0xFFFFFF00);
-    marketplace_set_gateway(gateway);
-
-    return 0;
-}
-
-/* Execute ACTION_DRIVER_LIST: list loaded drivers */
-static int exec_driver_list(char *output, int output_size)
-{
-    int pos = 0;
-
-    const driver_ops_t *drivers[MAX_DRIVERS];
-    uint32_t count = driver_list(drivers, MAX_DRIVERS);
-
-    buf_append(output, &pos, output_size, "Loaded Drivers:\n");
-
-    if (count == 0) {
-        buf_append(output, &pos, output_size, "  (no drivers loaded)\n");
-        return 0;
-    }
-
-    static const char *cat_names[] = {
-        "storage", "network", "input", "display", "gpu", "bus", "other"
-    };
-
-    for (uint32_t i = 0; i < count; i++) {
-        buf_append(output, &pos, output_size, "  ");
-        buf_append_uint(output, &pos, output_size, i + 1);
-        buf_append(output, &pos, output_size, ". ");
-        buf_append(output, &pos, output_size, drivers[i]->name);
-        buf_append(output, &pos, output_size, " [");
-        if (drivers[i]->category <= DRIVER_CAT_OTHER)
-            buf_append(output, &pos, output_size, cat_names[drivers[i]->category]);
-        else
-            buf_append(output, &pos, output_size, "unknown");
-        buf_append(output, &pos, output_size, "]\n");
-    }
-
-    buf_append_uint(output, &pos, output_size, count);
-    buf_append(output, &pos, output_size, " driver(s) loaded.\n");
-    return 0;
-}
-
-/* Execute ACTION_DRIVER_SEARCH: search the catalog */
-static int exec_driver_search(const char *query, char *output, int output_size)
-{
-    int pos = 0;
-
-    if (!query || !query[0]) {
-        buf_append(output, &pos, output_size, "Usage: search driver <name or category>\n");
-        return -1;
-    }
-
-    buf_append(output, &pos, output_size, "Searching catalog for: ");
-    buf_append(output, &pos, output_size, query);
-    buf_append(output, &pos, output_size, "\n");
-
-    /* Check catalog for matching entries */
-    catalog_entry_t results[16];
-    uint32_t found = 0;
-
-    /* Try searching by each category */
-    static const struct { const char *name; uint32_t cat; } cats[] = {
-        { "storage", AJDRV_CAT_STORAGE }, { "network", AJDRV_CAT_NETWORK },
-        { "input",   AJDRV_CAT_INPUT },   { "display", AJDRV_CAT_DISPLAY },
-        { "gpu",     AJDRV_CAT_GPU },     { "bus",     AJDRV_CAT_BUS },
-    };
-
-    for (uint32_t c = 0; c < 6; c++) {
-        if (contains_substr(query, cats[c].name)) {
-            found = catalog_find_by_category(cats[c].cat, results, 16);
-            break;
-        }
-    }
-
-    if (found == 0) {
-        buf_append(output, &pos, output_size,
-            "No drivers found in local catalog.\n"
-            "Try connecting to the marketplace for online search.\n");
-        return 0;
-    }
-
-    for (uint32_t i = 0; i < found; i++) {
-        buf_append(output, &pos, output_size, "  ");
-        buf_append(output, &pos, output_size, results[i].name);
-        buf_append(output, &pos, output_size, " v");
-        buf_append(output, &pos, output_size, results[i].version);
-        buf_append(output, &pos, output_size, " (");
-        buf_append_uint(output, &pos, output_size, results[i].size_bytes);
-        buf_append(output, &pos, output_size, " bytes)\n");
-    }
-
-    buf_append_uint(output, &pos, output_size, found);
-    buf_append(output, &pos, output_size, " driver(s) found.\n");
-    return 0;
-}
-
-/* Execute ACTION_SYS_INFO: comprehensive system information */
-static int exec_sys_info(char *output, int output_size)
-{
-    int pos = 0;
-
-    buf_append(output, &pos, output_size, "AlJefra OS v1.0\n");
-    buf_append(output, &pos, output_size, "Universal Boot Operating System\n\n");
-
-    /* Architecture */
-    buf_append(output, &pos, output_size, "Architecture: ");
-    switch (hal_arch()) {
-    case HAL_ARCH_X86_64:  buf_append(output, &pos, output_size, "x86-64\n");   break;
-    case HAL_ARCH_AARCH64: buf_append(output, &pos, output_size, "AArch64\n");  break;
-    case HAL_ARCH_RISCV64: buf_append(output, &pos, output_size, "RISC-V 64\n"); break;
-    }
-
-    /* CPU */
-    hal_cpu_info_t cpu;
-    hal_cpu_get_info(&cpu);
-    buf_append(output, &pos, output_size, "CPU: ");
-    buf_append(output, &pos, output_size, cpu.model);
-    buf_append(output, &pos, output_size, "\n");
-    buf_append(output, &pos, output_size, "  Vendor: ");
-    buf_append(output, &pos, output_size, cpu.vendor);
-    buf_append(output, &pos, output_size, "\n");
-    buf_append(output, &pos, output_size, "  Physical cores: ");
-    buf_append_uint(output, &pos, output_size, cpu.cores_physical);
-    buf_append(output, &pos, output_size, "\n");
-    buf_append(output, &pos, output_size, "  Logical cores: ");
-    buf_append_uint(output, &pos, output_size, cpu.cores_logical);
-    buf_append(output, &pos, output_size, "\n");
-    buf_append(output, &pos, output_size, "  Cache line: ");
-    buf_append_uint(output, &pos, output_size, cpu.cache_line_bytes);
-    buf_append(output, &pos, output_size, " bytes\n");
-
-    /* CPU features */
-    buf_append(output, &pos, output_size, "  Features:");
-    if (cpu.features & HAL_CPU_FEAT_FPU)    buf_append(output, &pos, output_size, " FPU");
-    if (cpu.features & HAL_CPU_FEAT_SSE)    buf_append(output, &pos, output_size, " SSE");
-    if (cpu.features & HAL_CPU_FEAT_AVX)    buf_append(output, &pos, output_size, " AVX");
-    if (cpu.features & HAL_CPU_FEAT_NEON)   buf_append(output, &pos, output_size, " NEON");
-    if (cpu.features & HAL_CPU_FEAT_SVE)    buf_append(output, &pos, output_size, " SVE");
-    if (cpu.features & HAL_CPU_FEAT_RVVEC)  buf_append(output, &pos, output_size, " RVV");
-    if (cpu.features & HAL_CPU_FEAT_RDRAND) buf_append(output, &pos, output_size, " RDRAND");
-    if (cpu.features & HAL_CPU_FEAT_CRC32)  buf_append(output, &pos, output_size, " CRC32");
-    if (cpu.features & HAL_CPU_FEAT_AES)    buf_append(output, &pos, output_size, " AES");
-    if (cpu.features & HAL_CPU_FEAT_ATOMICS) buf_append(output, &pos, output_size, " ATOMICS");
-    buf_append(output, &pos, output_size, "\n");
-
-    /* Memory */
-    uint64_t total_mb = hal_mmu_total_ram() / (1024 * 1024);
-    uint64_t free_mb  = hal_mmu_free_ram() / (1024 * 1024);
-    buf_append(output, &pos, output_size, "\nMemory:\n");
-    buf_append(output, &pos, output_size, "  Total: ");
-    buf_append_uint(output, &pos, output_size, total_mb);
-    buf_append(output, &pos, output_size, " MB\n");
-    buf_append(output, &pos, output_size, "  Free: ");
-    buf_append_uint(output, &pos, output_size, free_mb);
-    buf_append(output, &pos, output_size, " MB\n");
-    buf_append(output, &pos, output_size, "  Used: ");
-    buf_append_uint(output, &pos, output_size, total_mb - free_mb);
-    buf_append(output, &pos, output_size, " MB\n");
-
-    /* Drivers */
-    const driver_ops_t *drivers[MAX_DRIVERS];
-    uint32_t drv_count = driver_list(drivers, MAX_DRIVERS);
-    buf_append(output, &pos, output_size, "\nDrivers: ");
-    buf_append_uint(output, &pos, output_size, drv_count);
-    buf_append(output, &pos, output_size, " loaded\n");
-
-    /* Uptime */
-    uint64_t ms = hal_timer_ms();
-    uint64_t secs = ms / 1000;
-    uint64_t mins = secs / 60;
-    uint64_t hours = mins / 60;
-    buf_append(output, &pos, output_size, "\nUptime: ");
-    buf_append_uint(output, &pos, output_size, hours);
-    buf_append(output, &pos, output_size, "h ");
-    buf_append_uint(output, &pos, output_size, mins % 60);
-    buf_append(output, &pos, output_size, "m ");
-    buf_append_uint(output, &pos, output_size, secs % 60);
-    buf_append(output, &pos, output_size, "s\n");
-
-    /* Timer frequency */
-    buf_append(output, &pos, output_size, "Timer: ");
-    buf_append_uint(output, &pos, output_size, hal_timer_freq_hz());
-    buf_append(output, &pos, output_size, " Hz\n");
-
-    return 0;
-}
-
-/* Execute ACTION_SYS_UPTIME */
-static int exec_sys_uptime(char *output, int output_size)
-{
-    int pos = 0;
-    uint64_t ms = hal_timer_ms();
-    uint64_t secs = ms / 1000;
-    uint64_t mins = secs / 60;
-    uint64_t hours = mins / 60;
-    uint64_t days = hours / 24;
-
-    buf_append(output, &pos, output_size, "Uptime: ");
-    if (days > 0) {
-        buf_append_uint(output, &pos, output_size, days);
-        buf_append(output, &pos, output_size, " day(s), ");
-    }
-    buf_append_uint(output, &pos, output_size, hours % 24);
-    buf_append(output, &pos, output_size, " hour(s), ");
-    buf_append_uint(output, &pos, output_size, mins % 60);
-    buf_append(output, &pos, output_size, " minute(s), ");
-    buf_append_uint(output, &pos, output_size, secs % 60);
-    buf_append(output, &pos, output_size, " second(s)\n");
-
-    return 0;
-}
-
-/* Execute ACTION_MEMORY_INFO */
-static int exec_memory_info(char *output, int output_size)
-{
-    int pos = 0;
-
-    uint64_t total = hal_mmu_total_ram();
-    uint64_t free_ram = hal_mmu_free_ram();
-    uint64_t used = total - free_ram;
-
-    buf_append(output, &pos, output_size, "Memory Information:\n");
-    buf_append(output, &pos, output_size, "  Total: ");
-    buf_append_uint(output, &pos, output_size, total / (1024 * 1024));
-    buf_append(output, &pos, output_size, " MB (");
-    buf_append_uint(output, &pos, output_size, total);
-    buf_append(output, &pos, output_size, " bytes)\n");
-
-    buf_append(output, &pos, output_size, "  Used:  ");
-    buf_append_uint(output, &pos, output_size, used / (1024 * 1024));
-    buf_append(output, &pos, output_size, " MB\n");
-
-    buf_append(output, &pos, output_size, "  Free:  ");
-    buf_append_uint(output, &pos, output_size, free_ram / (1024 * 1024));
-    buf_append(output, &pos, output_size, " MB\n");
-
-    /* Usage percentage (avoid FP: percent = used * 100 / total) */
-    if (total > 0) {
-        uint64_t pct = (used * 100) / total;
-        buf_append(output, &pos, output_size, "  Usage: ");
-        buf_append_uint(output, &pos, output_size, pct);
-        buf_append(output, &pos, output_size, "%\n");
-    }
-
-    /* Page size */
-    buf_append(output, &pos, output_size, "  Page size: 4096 bytes\n");
-
-    /* Memory regions */
-    hal_mem_region_t regions[32];
-    uint32_t nregions = hal_mmu_get_memory_map(regions, 32);
-    if (nregions > 0) {
-        buf_append(output, &pos, output_size, "\n  Memory regions:\n");
-        for (uint32_t i = 0; i < nregions && i < 8; i++) {
-            buf_append(output, &pos, output_size, "    0x");
-            /* Simple hex output for base address */
-            char hexbuf[20];
-            uint64_t v = regions[i].base;
-            for (int b = 15; b >= 0; b--) {
-                hexbuf[15 - b] = "0123456789abcdef"[(v >> (b * 4)) & 0xF];
-            }
-            hexbuf[16] = '\0';
-            /* Skip leading zeros */
-            const char *hp = hexbuf;
-            while (*hp == '0' && *(hp + 1))
-                hp++;
-            buf_append(output, &pos, output_size, hp);
-            buf_append(output, &pos, output_size, " - ");
-            buf_append_uint(output, &pos, output_size, regions[i].size / 1024);
-            buf_append(output, &pos, output_size, " KB");
-            buf_append(output, &pos, output_size,
-                       regions[i].type == 1 ? " [usable]" :
-                       regions[i].type == 2 ? " [reserved]" : " [other]");
-            buf_append(output, &pos, output_size, "\n");
-        }
-    }
-
-    return 0;
-}
-
-/* Execute ACTION_SYS_REBOOT */
-static int exec_sys_reboot(char *output, int output_size)
-{
-    int pos = 0;
-    buf_append(output, &pos, output_size, "Rebooting system...\n");
-
-    /* Use ACPI reset on x86, or PSCI on ARM, or SBI on RISC-V.
-     * The actual reboot is architecture-specific.
-     * For x86: write 0xFE to keyboard controller port 0x64.
-     * This is a last-resort reboot method. */
-#if defined(__x86_64__) || defined(_M_X64)
-    hal_port_out8(0x64, 0xFE);
-#endif
-
-    /* If we get here, the reboot did not take effect immediately.
-     * The HAL halt should be caught by a watchdog or the user. */
-    hal_cpu_halt();
-    return 0;
-}
-
-/* Execute ACTION_SYS_SHUTDOWN */
-static int exec_sys_shutdown(char *output, int output_size)
-{
-    int pos = 0;
-    buf_append(output, &pos, output_size, "Shutting down...\n");
-    buf_append(output, &pos, output_size,
-        "All drivers unloaded. It is safe to power off.\n");
-
-    /* On QEMU: write to ACPI PM1a control register to power off */
-#if defined(__x86_64__) || defined(_M_X64)
-    hal_port_out16(0x604, 0x2000);  /* QEMU ACPI shutdown */
-#endif
-
-    hal_cpu_disable_interrupts();
-    for (;;)
-        hal_cpu_halt();
-
-    return 0; /* Unreachable */
-}
-
-/* Execute ACTION_SYS_UPDATE */
-static int exec_sys_update(char *output, int output_size)
-{
-    int pos = 0;
-
-    buf_append(output, &pos, output_size, "Checking for updates...\n");
-
-    char update_url[256];
-    update_url[0] = '\0';
-    hal_status_t rc = marketplace_check_updates("1.0.0", update_url, sizeof(update_url));
-
-    if (rc == HAL_OK && update_url[0]) {
-        buf_append(output, &pos, output_size, "Update available: ");
-        buf_append(output, &pos, output_size, update_url);
-        buf_append(output, &pos, output_size,
-            "\nRun 'install update' to download and apply.\n");
-    } else if (rc == HAL_OK) {
-        buf_append(output, &pos, output_size, "System is up to date.\n");
-    } else {
-        buf_append(output, &pos, output_size,
-            "Failed to check for updates. No network connection?\n");
-    }
-
-    return 0;
-}
-
-/* Execute ACTION_TASK_LIST */
-static int exec_task_list(char *output, int output_size)
-{
-    int pos = 0;
-
-    buf_append(output, &pos, output_size, "Running Tasks:\n");
-    buf_append(output, &pos, output_size, "  ID  State    Core\n");
-    buf_append(output, &pos, output_size, "  --  -----    ----\n");
-
-    /* The scheduler exposes a current task ID.
-     * With the cooperative model, we report what we know. */
-    uint32_t cur = sched_current_task();
-    buf_append(output, &pos, output_size, "  ");
-    buf_append_uint(output, &pos, output_size, cur);
-    buf_append(output, &pos, output_size, "   running  ");
-    buf_append_uint(output, &pos, output_size, (uint64_t)hal_cpu_id());
-    buf_append(output, &pos, output_size, " (current)\n");
-
-    uint32_t ncores = hal_cpu_count();
-    buf_append(output, &pos, output_size, "\nCPU cores online: ");
-    buf_append_uint(output, &pos, output_size, ncores);
-    buf_append(output, &pos, output_size, "\n");
-
-    return 0;
-}
-
-/* Execute ACTION_HELP: show available commands */
-static int exec_help(const char *lang, char *output, int output_size)
-{
-    int pos = 0;
-
-    int is_arabic = (lang && lang[0] == 'a' && lang[1] == 'r');
-
-    if (is_arabic) {
-        buf_append(output, &pos, output_size,
-            /* نظام الجفرا - الأوامر المتاحة */
-            "\xd9\x86\xd8\xb8\xd8\xa7\xd9\x85 \xd8\xa7\xd9\x84\xd8\xac\xd9\x81\xd8\xb1\xd8\xa7 - "
-            "\xd8\xa7\xd9\x84\xd8\xa3\xd9\x88\xd8\xa7\xd9\x85\xd8\xb1 "
-            "\xd8\xa7\xd9\x84\xd9\x85\xd8\xaa\xd8\xa7\xd8\xad\xd8\xa9:\n\n");
-    } else {
-        buf_append(output, &pos, output_size,
-            "AlJefra OS -- Available Commands:\n\n");
-    }
-
-    buf_append(output, &pos, output_size, "File System:\n");
-    buf_append(output, &pos, output_size, "  ls / list files       - List files on disk\n");
-    buf_append(output, &pos, output_size, "  cat <file>            - Read a file\n");
-    buf_append(output, &pos, output_size, "  touch <file>          - Create a new file\n");
-    buf_append(output, &pos, output_size, "  rm <file>             - Delete a file\n");
-    buf_append(output, &pos, output_size, "  write <file>          - Write to a file\n");
-
-    buf_append(output, &pos, output_size, "\nNetwork:\n");
-    buf_append(output, &pos, output_size, "  ifconfig / net status - Show network info\n");
-    buf_append(output, &pos, output_size, "  dhcp / connect        - Get IP via DHCP\n");
-
-    buf_append(output, &pos, output_size, "\nDrivers:\n");
-    buf_append(output, &pos, output_size, "  lsmod / list drivers  - Show loaded drivers\n");
-    buf_append(output, &pos, output_size, "  search driver <name>  - Search marketplace\n");
-    buf_append(output, &pos, output_size, "  install driver <name> - Install a driver\n");
-
-    buf_append(output, &pos, output_size, "\nSystem:\n");
-    buf_append(output, &pos, output_size, "  uname / sysinfo       - System information\n");
-    buf_append(output, &pos, output_size, "  free / memory info    - Memory usage\n");
-    buf_append(output, &pos, output_size, "  uptime                - Time since boot\n");
-    buf_append(output, &pos, output_size, "  ps / list tasks       - Running tasks\n");
-    buf_append(output, &pos, output_size, "  reboot                - Reboot system\n");
-    buf_append(output, &pos, output_size, "  halt / shutdown       - Power off\n");
-    buf_append(output, &pos, output_size, "  check update          - Check for OS updates\n");
-
-    buf_append(output, &pos, output_size, "\nGeneral:\n");
-    buf_append(output, &pos, output_size, "  help / ?              - This help screen\n");
-    buf_append(output, &pos, output_size, "  (anything else)       - Ask the AI assistant\n");
-
-    if (is_arabic) {
-        buf_append(output, &pos, output_size,
-            "\n"
-            /* يمكنك أيضا الكتابة بالعربية */
-            "\xd9\x8a\xd9\x85\xd9\x83\xd9\x86\xd9\x83 "
-            "\xd8\xa3\xd9\x8a\xd8\xb6\xd8\xa7 "
-            "\xd8\xa7\xd9\x84\xd9\x83\xd8\xaa\xd8\xa7\xd8\xa8\xd8\xa9 "
-            "\xd8\xa8\xd8\xa7\xd9\x84\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a\xd8\xa9\n");
-    } else {
-        buf_append(output, &pos, output_size,
-            "\nYou can also type commands in Arabic.\n");
-    }
-
-    return 0;
-}
-
-/* Master action executor */
-int ai_execute_action(const ai_action_t *action, char *output, int output_size)
-{
-    if (!action || !output || output_size <= 0)
-        return -1;
-
-    output[0] = '\0';
-
-    switch (action->type) {
-    case ACTION_FS_LIST:
-        return exec_fs_list(output, output_size);
-
-    case ACTION_FS_READ:
-        return exec_fs_read(action->args, output, output_size);
-
-    case ACTION_FS_WRITE: {
-        int pos = 0;
-        buf_append(output, &pos, output_size,
-            "File write not yet implemented from chat. "
-            "Use the storage API directly.\n");
-        return 0;
-    }
-
-    case ACTION_FS_DELETE: {
-        int pos = 0;
-        if (!action->args[0]) {
-            buf_append(output, &pos, output_size, "Usage: delete <filename>\n");
-            return -1;
-        }
-        buf_append(output, &pos, output_size, "File deletion not yet implemented from chat.\n");
-        return 0;
-    }
-
-    case ACTION_FS_CREATE: {
-        int pos = 0;
-        if (!action->args[0]) {
-            buf_append(output, &pos, output_size, "Usage: create <filename>\n");
-            return -1;
-        }
-        buf_append(output, &pos, output_size, "File creation not yet implemented from chat.\n");
-        return 0;
-    }
-
-    case ACTION_NET_STATUS:
-        return exec_net_status(output, output_size);
-
-    case ACTION_NET_CONNECT:
-        return exec_net_connect(output, output_size);
-
-    case ACTION_DRIVER_LIST:
-        return exec_driver_list(output, output_size);
-
-    case ACTION_DRIVER_SEARCH:
-        return exec_driver_search(action->args, output, output_size);
-
-    case ACTION_DRIVER_INSTALL: {
-        int pos = 0;
-        if (!action->args[0]) {
-            buf_append(output, &pos, output_size,
-                "Usage: install driver <name>\n"
-                "First search for a driver, then install by name.\n");
-            return -1;
-        }
-        buf_append(output, &pos, output_size,
-            "Driver installation from chat requires marketplace connection.\n"
-            "Use 'connect' first, then try again.\n");
-        return 0;
-    }
-
-    case ACTION_SYS_INFO:
-        return exec_sys_info(output, output_size);
-
-    case ACTION_SYS_REBOOT:
-        return exec_sys_reboot(output, output_size);
-
-    case ACTION_SYS_SHUTDOWN:
-        return exec_sys_shutdown(output, output_size);
-
-    case ACTION_SYS_UPDATE:
-        return exec_sys_update(output, output_size);
-
-    case ACTION_SYS_UPTIME:
-        return exec_sys_uptime(output, output_size);
-
-    case ACTION_DISPLAY_SET: {
-        int pos = 0;
-        buf_append(output, &pos, output_size,
-            "Display settings: ");
-        if (hal_console_type() == HAL_CONSOLE_SERIAL)
-            buf_append(output, &pos, output_size, "serial console (no display settings)\n");
-        else if (hal_console_type() == HAL_CONSOLE_VGA)
-            buf_append(output, &pos, output_size, "VGA text mode 80x25\n");
-        else
-            buf_append(output, &pos, output_size, "framebuffer console\n");
-        return 0;
-    }
-
-    case ACTION_TASK_LIST:
-        return exec_task_list(output, output_size);
-
-    case ACTION_MEMORY_INFO:
-        return exec_memory_info(output, output_size);
-
-    case ACTION_HELP:
-        return exec_help(g_session.language, output, output_size);
-
-    case ACTION_NONE:
-    default: {
-        int pos = 0;
-        buf_append(output, &pos, output_size, "(no action)\n");
-        return 0;
-    }
-    }
-}
-
-/* ========================================================================
- * Response Formatter
- * ======================================================================== */
-
-int ai_format_response(const ai_action_t *action, const char *raw_result,
-                        const char *lang, char *out, int out_size)
-{
-    int pos = 0;
-
-    if (!action || !raw_result || !out || out_size <= 0)
-        return 0;
-
-    int is_arabic = (lang && lang[0] == 'a' && lang[1] == 'r');
-
-    /* If the action needed confirmation and was destructive, prefix a notice */
-    if (action->needs_confirm) {
-        if (is_arabic) {
-            /* تحذير: */
-            buf_append(out, &pos, out_size,
-                "\xe2\x9a\xa0 \xd8\xaa\xd8\xad\xd8\xb0\xd9\x8a\xd8\xb1: ");
-        } else {
-            buf_append(out, &pos, out_size, "[!] Warning: ");
-        }
-    }
-
-    /* For successful actions, add a brief header */
-    if (action->type != ACTION_NONE && action->type != ACTION_HELP) {
-        /* Find the action description */
-        for (uint32_t i = 0; i < ACTION_TABLE_SIZE; i++) {
-            if (g_action_table[i].type == action->type) {
-                if (is_arabic) {
-                    buf_append(out, &pos, out_size, "[");
-                    buf_append(out, &pos, out_size, g_action_table[i].desc_ar);
-                    buf_append(out, &pos, out_size, "]\n");
-                } else {
-                    buf_append(out, &pos, out_size, "[");
-                    buf_append(out, &pos, out_size, g_action_table[i].desc_en);
-                    buf_append(out, &pos, out_size, "]\n");
-                }
-                break;
-            }
-        }
-    }
-
-    /* Append the raw result */
-    buf_append(out, &pos, out_size, raw_result);
-
-    return pos;
-}
-
-/* ========================================================================
- * Main Chat Processing Pipeline
- * ======================================================================== */
-
-/* Process LLM response JSON to extract action or text */
-static int process_llm_response(const char *llm_response, ai_action_t *action,
-                                 char *text_out, int text_max)
-{
-    /* Try to extract an action from the LLM JSON response */
-    char action_name[64];
-    char action_args[256];
-
-    action_name[0] = '\0';
-    action_args[0] = '\0';
-    text_out[0] = '\0';
-
-    /* Try "action" key first */
-    int found_action = json_extract_string(llm_response, "action",
-                                            action_name, sizeof(action_name));
-    if (found_action >= 0 && action_name[0]) {
-        /* Extract arguments */
-        json_extract_string(llm_response, "args", action_args, sizeof(action_args));
-
-        action->type = ai_action_from_name(action_name);
-        str_copy(action->args, action_args, sizeof(action->args));
-        action->needs_confirm = 0;
-        action->confidence = 90;
-
-        /* Mark destructive actions as needing confirmation */
-        if (action->type == ACTION_SYS_REBOOT ||
-            action->type == ACTION_SYS_SHUTDOWN ||
-            action->type == ACTION_FS_DELETE) {
-            action->needs_confirm = 1;
-        }
-
-        return 1; /* Action found */
-    }
-
-    /* Try "text" key for plain text response */
-    int found_text = json_extract_string(llm_response, "text",
-                                          text_out, text_max);
-    if (found_text >= 0) {
-        action->type = ACTION_NONE;
-        return 0; /* Text response, no action */
-    }
-
-    /* Fallback: treat the entire response as text */
-    str_copy(text_out, llm_response, text_max);
-    action->type = ACTION_NONE;
-    return 0;
+    return 1;
 }
 
 int ai_chat_process(const char *user_input, char *response, int response_size)
@@ -1933,149 +1677,139 @@ int ai_chat_process(const char *user_input, char *response, int response_size)
     if (!user_input || !response || response_size <= 0)
         return -1;
 
-    if (!g_session.initialized)
-        ai_chat_init();
-
-    response[0] = '\0';
-    int pos = 0;
-
-    /* Skip leading whitespace */
-    user_input = skip_space(user_input);
-    if (!*user_input) {
-        buf_append(response, &pos, response_size, "(empty input)\n");
-        return pos;
+    if (!g_session.initialized) {
+        safe_copy(response,
+            "Error: AI chat engine not initialized. "
+            "Call ai_chat_init() first.",
+            (uint32_t)response_size);
+        return -1;
     }
 
-    /* Detect language */
-    if (has_arabic(user_input))
-        str_copy(g_session.language, "ar", sizeof(g_session.language));
-    else
-        str_copy(g_session.language, "en", sizeof(g_session.language));
+    response[0] = '\0';
 
-    /* Record user message in history */
-    history_add(1, user_input);
+    /* Skip empty input */
+    const char *trimmed = skip_ws(user_input);
+    if (trimmed[0] == '\0') {
+        safe_copy(response, "Please enter a command or question.",
+                  (uint32_t)response_size);
+        return (int)str_len(response);
+    }
 
-    /* Step 1: Try local NLP parse */
+    /* Step 1: Detect language from input */
+    detect_language(trimmed);
+
+    /* Step 2: Add user message to history */
+    history_add(1, trimmed);
+
+    /* Step 3: Try local NLP parse */
     ai_action_t action;
-    memset(&action, 0, sizeof(action));
+    int parsed = ai_parse_local(trimmed, &action);
 
-    int local_match = ai_parse_local(user_input, &action);
-
-    if (local_match && action.type != ACTION_NONE) {
-        /* Local command recognized -- handle confirmation if needed */
-        if (action.needs_confirm) {
-            /* For now, auto-confirm in the chat flow.
-             * A full implementation would prompt the user and wait.
-             * We append a warning to the response. */
-            int is_arabic = (g_session.language[0] == 'a');
-
-            if (is_arabic) {
-                buf_append(response, &pos, response_size,
-                    /* تنفيذ العملية... */
-                    "\xd8\xaa\xd9\x86\xd9\x81\xd9\x8a\xd8\xb0 "
-                    "\xd8\xa7\xd9\x84\xd8\xb9\xd9\x85\xd9\x84\xd9\x8a\xd8\xa9...\n");
-            } else {
-                buf_append(response, &pos, response_size,
-                    "Executing (requires confirmation in production)...\n");
-            }
-        }
-
-        /* Execute the action */
-        char result_buf[AI_CHAT_RESPONSE_MAX];
-        result_buf[0] = '\0';
-        ai_execute_action(&action, result_buf, sizeof(result_buf));
-
-        /* Format the response */
-        ai_format_response(&action, result_buf, g_session.language,
-                            response + pos, response_size - pos);
-        pos = (int)str_len(response);
-
-        g_session.commands_executed++;
-    } else {
-        /* Step 2: No local match -- try LLM if available */
+    /* Step 4: If local parse failed and LLM is available, try LLM */
+    if (!parsed || action.type == ACTION_NONE) {
         if (g_session.llm_send) {
-            /* Build system prompt with context */
-            char context[2048];
-            ai_get_context(context, sizeof(context));
+            /* Build system context */
+            ai_get_context(g_llm_context, (int)sizeof(g_llm_context));
 
-            /* Send to LLM */
-            char llm_response[AI_CHAT_RESPONSE_MAX];
-            llm_response[0] = '\0';
-
-            int llm_len = g_session.llm_send(context, user_input,
-                                              llm_response, sizeof(llm_response));
+            /* Forward to LLM */
+            int llm_len = g_session.llm_send(
+                g_llm_context, trimmed,
+                g_llm_response, (uint32_t)sizeof(g_llm_response));
             g_session.llm_calls++;
 
             if (llm_len > 0) {
-                /* Parse LLM response for action or text */
+                if ((uint32_t)llm_len < sizeof(g_llm_response))
+                    g_llm_response[llm_len] = '\0';
+                else
+                    g_llm_response[sizeof(g_llm_response) - 1] = '\0';
+
+                /* Try to extract an action from the LLM response */
                 ai_action_t llm_action;
-                memset(&llm_action, 0, sizeof(llm_action));
-
-                char text_response[AI_CHAT_RESPONSE_MAX];
-                text_response[0] = '\0';
-
-                int has_action = process_llm_response(llm_response, &llm_action,
-                                                       text_response,
-                                                       sizeof(text_response));
-
-                if (has_action && llm_action.type != ACTION_NONE) {
-                    /* LLM suggested an action -- execute it */
-                    if (llm_action.needs_confirm) {
-                        buf_append(response, &pos, response_size,
-                            "The AI suggests a system action that requires "
-                            "confirmation.\nExecuting...\n");
-                    }
-
-                    char result_buf[AI_CHAT_RESPONSE_MAX];
-                    result_buf[0] = '\0';
-                    ai_execute_action(&llm_action, result_buf, sizeof(result_buf));
-                    ai_format_response(&llm_action, result_buf,
-                                        g_session.language,
-                                        response + pos, response_size - pos);
-                    pos = (int)str_len(response);
-                    g_session.commands_executed++;
+                if (parse_llm_action(g_llm_response, &llm_action) &&
+                    llm_action.type != ACTION_NONE) {
+                    action = llm_action;
+                    parsed = 1;
                 } else {
-                    /* Pure text response from LLM */
-                    buf_append(response, &pos, response_size, text_response);
-                }
-            } else {
-                /* LLM call failed */
-                if (g_session.language[0] == 'a') {
-                    buf_append(response, &pos, response_size,
-                        /* عذرا، لم أتمكن من الاتصال بالذكاء الاصطناعي */
-                        "\xd8\xb9\xd8\xb0\xd8\xb1\xd8\xa7\xd8\x8c "
-                        "\xd9\x84\xd9\x85 \xd8\xa3\xd8\xaa\xd9\x85\xd9\x83\xd9\x86 "
-                        "\xd9\x85\xd9\x86 \xd8\xa7\xd9\x84\xd8\xa7\xd8\xaa\xd8\xb5\xd8\xa7\xd9\x84 "
-                        "\xd8\xa8\xd8\xa7\xd9\x84\xd8\xb0\xd9\x83\xd8\xa7\xd8\xa1 "
-                        "\xd8\xa7\xd9\x84\xd8\xa7\xd8\xb5\xd8\xb7\xd9\x86\xd8\xa7\xd8\xb9\xd9\x8a. "
-                        "\xd8\xa7\xd9\x83\xd8\xaa\xd8\xa8 'help' "
-                        "\xd9\x84\xd9\x84\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9.\n");
-                } else {
-                    buf_append(response, &pos, response_size,
-                        "I could not reach the AI service. "
-                        "Type 'help' to see available offline commands.\n");
+                    /* LLM gave a free-text response -- use it directly */
+                    safe_copy(response, g_llm_response,
+                              (uint32_t)response_size);
+                    history_add(0, response);
+                    return (int)str_len(response);
                 }
             }
-        } else {
-            /* No LLM available -- offline mode */
-            if (g_session.language[0] == 'a') {
-                buf_append(response, &pos, response_size,
-                    /* لم أفهم الأمر. اكتب 'help' للمساعدة */
-                    "\xd9\x84\xd9\x85 \xd8\xa3\xd9\x81\xd9\x87\xd9\x85 "
-                    "\xd8\xa7\xd9\x84\xd8\xa3\xd9\x85\xd8\xb1. "
-                    "\xd8\xa7\xd9\x83\xd8\xaa\xd8\xa8 'help' "
-                    "\xd9\x84\xd9\x84\xd9\x85\xd8\xb3\xd8\xa7\xd8\xb9\xd8\xaf\xd8\xa9.\n");
-            } else {
-                buf_append(response, &pos, response_size,
-                    "I don't recognize that command. "
-                    "Type 'help' to see available commands, "
-                    "or connect to a network for AI assistance.\n");
-            }
+            /* If LLM call failed, fall through to ACTION_NONE handling */
         }
     }
 
-    /* Record assistant response in history */
+    /* Step 5: If the action needs confirmation, return a prompt.
+     * Check whether the user's current input is itself a confirmation
+     * of a previously prompted action. */
+    if (parsed && action.needs_confirm) {
+        int is_confirmation =
+            (ci_strstr(trimmed, "yes") != (const char *)0) ||
+            (ci_strstr(trimmed, "confirm") != (const char *)0) ||
+            /* نعم (Arabic "yes") */
+            (byte_strstr(trimmed, "\xd9\x86\xd8\xb9\xd9\x85") != (const char *)0);
+
+        if (!is_confirmation) {
+            int is_ar = (g_session.language[0] == 'a' &&
+                         g_session.language[1] == 'r');
+
+            if (is_ar) {
+                safe_copy(response,
+                    /* هل أنت متأكد؟ هذا الإجراء لا يمكن التراجع عنه. */
+                    "\xd9\x87\xd9\x84 \xd8\xa3\xd9\x86\xd8\xaa "
+                    "\xd9\x85\xd8\xaa\xd8\xa3\xd9\x83\xd8\xaf\xd8\x9f "
+                    "\xd9\x87\xd8\xb0\xd8\xa7 \xd8\xa7\xd9\x84\xd8\xa5\xd8\xac\xd8\xb1\xd8\xa7\xd8\xa1 "
+                    "\xd9\x84\xd8\xa7 \xd9\x8a\xd9\x85\xd9\x83\xd9\x86 "
+                    "\xd8\xa7\xd9\x84\xd8\xaa\xd8\xb1\xd8\xa7\xd8\xac\xd8\xb9 "
+                    "\xd8\xb9\xd9\x86\xd9\x87.\n",
+                    (uint32_t)response_size);
+            } else {
+                safe_copy(response,
+                    "Are you sure? This action cannot be undone.\n",
+                    (uint32_t)response_size);
+            }
+
+            safe_append(response, "Action: ", (uint32_t)response_size);
+            safe_append(response, ai_action_name(action.type),
+                        (uint32_t)response_size);
+            if (action.args[0]) {
+                safe_append(response, " (", (uint32_t)response_size);
+                safe_append(response, action.args, (uint32_t)response_size);
+                safe_append(response, ")", (uint32_t)response_size);
+            }
+            safe_append(response, "\n", (uint32_t)response_size);
+
+            if (is_ar)
+                /* اكتب "نعم" للتأكيد. */
+                safe_append(response,
+                    "\xd8\xa7\xd9\x83\xd8\xaa\xd8\xa8 "
+                    "\"\xd9\x86\xd8\xb9\xd9\x85\" "
+                    "\xd9\x84\xd9\x84\xd8\xaa\xd8\xa3\xd9\x83\xd9\x8a\xd8\xaf.",
+                    (uint32_t)response_size);
+            else
+                safe_append(response, "Type 'yes' to confirm.",
+                            (uint32_t)response_size);
+
+            /* Return without executing -- wait for confirmation */
+            history_add(0, response);
+            return (int)str_len(response);
+        }
+        /* User confirmed -- fall through to execution */
+    }
+
+    /* Step 6: Execute the action */
+    g_raw_result[0] = '\0';
+    ai_execute_action(&action, g_raw_result, (int)sizeof(g_raw_result));
+    g_session.commands_executed++;
+
+    /* Step 7: Format the response with language-appropriate prefix */
+    ai_format_response(&action, g_raw_result, g_session.language,
+                       response, response_size);
+
+    /* Step 8: Add assistant response to history */
     history_add(0, response);
 
-    return pos;
+    return (int)str_len(response);
 }

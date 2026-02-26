@@ -1,52 +1,55 @@
-# AlJefra OS Release Process
+# AlJefra OS -- Release Process
 
-This document describes how AlJefra OS versions are numbered, built, tested,
+This document describes how AlJefra OS versions are numbered, tested, built,
 signed, and published.
 
 ---
 
 ## Semantic Versioning
 
-AlJefra OS uses [Semantic Versioning](https://semver.org/):
+AlJefra OS follows [Semantic Versioning 2.0.0](https://semver.org/):
 
 ```
 MAJOR.MINOR.PATCH
 ```
 
-| Component | Incremented When                                          |
-|-----------|-----------------------------------------------------------|
-| MAJOR     | Breaking changes to kernel API, HAL, or .ajdrv format     |
-| MINOR     | New features, drivers, or architecture support (backward compatible) |
-| PATCH     | Bug fixes, performance improvements, documentation updates |
+| Component | Incremented When                                        |
+|-----------|---------------------------------------------------------|
+| MAJOR     | Incompatible API or ABI changes (driver_ops_t, HAL)     |
+| MINOR     | New features, new drivers, new architecture support      |
+| PATCH     | Bug fixes, security patches, documentation updates       |
 
-Examples: `1.0.0`, `1.1.0`, `1.0.1`
+**Pre-release tags:** `-alpha`, `-beta`, `-rc1`, `-rc2`, etc.
+
+Examples: `1.0.0`, `1.1.0-beta`, `1.1.0-rc1`, `1.1.0`
 
 ---
 
 ## Branch Model
 
-| Branch    | Purpose                                            |
-|-----------|----------------------------------------------------|
-| `main`    | Stable releases only. Every commit is a release tag. |
-| `dev`     | Active development. PRs merge here first.          |
-| `release/X.Y` | Release candidate branch (cut from dev)       |
-| `hotfix/X.Y.Z` | Emergency fixes applied to main             |
+| Branch    | Purpose                                                  |
+|-----------|----------------------------------------------------------|
+| `main`    | Stable releases only. Tagged with version numbers.       |
+| `dev`     | Active development. PRs merge here first.                |
+| `release/X.Y` | Release preparation branch (cut from `dev`).        |
+| `hotfix/X.Y.Z` | Emergency fixes applied to `main`.                |
 
-### Flow
-
-```
-dev  ------>  release/1.1  ------>  main (tag v1.1.0)
-                  |
-              (bug fix)
-                  |
-              release/1.1  ------>  main (tag v1.1.1)
-```
-
-Hotfixes:
+### Normal Release Flow
 
 ```
-main  ------>  hotfix/1.0.1  ------>  main (tag v1.0.1)
-                                  \-->  dev  (merge back)
+dev  -->  release/1.1  -->  main  (tag: v1.1.0)
+```
+
+1. Cut `release/X.Y` from `dev`.
+2. Only bug fixes go into the release branch.
+3. Merge to `main` when ready. Tag with `vX.Y.Z`.
+4. Merge `main` back to `dev` to pick up any release fixes.
+
+### Hotfix Flow
+
+```
+main  -->  hotfix/1.0.1  -->  main  (tag: v1.0.1)
+                          -->  dev   (cherry-pick)
 ```
 
 ---
@@ -57,121 +60,137 @@ Before tagging a release, complete every item:
 
 ### Build
 
-- [ ] `make ARCH=x86_64` compiles with zero warnings (`-Wall -Werror`)
-- [ ] `make ARCH=aarch64` compiles with zero warnings
-- [ ] `make ARCH=riscv64` compiles with zero warnings
-- [ ] Binary sizes are within expected range (x86_64 < 200 KB, etc.)
+- [ ] `make ARCH=x86_64` succeeds with zero warnings
+- [ ] `make ARCH=aarch64` succeeds with zero warnings
+- [ ] `make ARCH=riscv64` succeeds with zero warnings
+- [ ] All three kernel binaries are under 256 KB
 
 ### Test
 
-- [ ] x86-64 boots in QEMU, reaches `Ready` prompt
-- [ ] ARM64 boots in QEMU, reaches `Ready` prompt
-- [ ] RISC-V boots in QEMU, reaches `Ready` prompt
-- [ ] PCIe device enumeration works on all architectures
-- [ ] At least one storage and one network driver load successfully
-- [ ] Marketplace client connects and lists drivers
-- [ ] No regression from previous release (diff boot logs)
+- [ ] x86-64 QEMU boot: reaches "AlJefra OS Ready" prompt
+- [ ] ARM64 QEMU boot: reaches "AlJefra OS Ready" prompt
+- [ ] RISC-V QEMU boot: reaches "AlJefra OS Ready" prompt
+- [ ] Marketplace driver download + load works (x86-64)
+- [ ] Ed25519 signature verification passes
+- [ ] Network stack (DHCP, DNS, HTTP) functional
 
 ### Documentation
 
-- [ ] `CHANGELOG.md` updated with all changes since last release
-- [ ] Version string updated in kernel (`sysvar.asm` and `hal.h`)
-- [ ] `ROADMAP.md` updated if milestones were reached
-- [ ] Website download page updated (`website/download.html`)
+- [ ] CHANGELOG.md updated with all changes since last release
+- [ ] ROADMAP.md updated with completed items
+- [ ] Version string in kernel updated (`sysvar.asm` or equivalent)
+- [ ] Website download page updated
 
 ### Sign and Package
 
 - [ ] Kernel binaries signed with Ed25519 release key
-- [ ] ISO image built (GRUB2 boot for x86-64)
-- [ ] USB image built and tested
+- [ ] ISO image built (GRUB2 bootloader)
+- [ ] USB image built
 - [ ] SHA-256 checksums generated for all artifacts
-
-### Publish
-
-- [ ] Git tag created: `git tag -a v1.0.0 -m "AlJefra OS v1.0.0"`
-- [ ] Tag pushed: `git push origin v1.0.0`
-- [ ] GitHub Release created with changelog and binary attachments
-- [ ] Artifacts uploaded to os.aljefra.com/download
-- [ ] Announcement posted (GitHub Discussions, website)
 
 ---
 
 ## Changelog Format
 
-Follow the [Keep a Changelog](https://keepachangelog.com/) format:
+The CHANGELOG.md follows [Keep a Changelog](https://keepachangelog.com/):
 
 ```markdown
 ## [1.1.0] - 2026-MM-DD
 
 ### Added
-- New driver: Intel I225 2.5 GbE NIC
-- GUI: File browser widget
+- New feature description
 
 ### Changed
-- Improved PCIe enumeration speed by 40%
+- Modified behavior description
 
 ### Fixed
-- ARM64: GIC priority mask now handles IRQs 32-63
+- Bug fix description
 
 ### Removed
-- Deprecated legacy VirtIO ID support
-```
+- Removed feature description
 
-Categories: **Added**, **Changed**, **Fixed**, **Deprecated**, **Removed**, **Security**
+### Security
+- Security fix description
+```
 
 ---
 
 ## Binary Signing
 
-All release binaries are signed with the AlJefra release Ed25519 key.
+All release binaries are signed with the AlJefra Release Key (Ed25519).
 
-### Process
+### Signing Steps
 
-1. Build the final binaries from the tagged commit
+1. Build the release artifacts:
+   ```bash
+   make all-arch
+   ```
+
 2. Generate SHA-256 checksums:
    ```bash
-   sha256sum build/*/bin/*.bin > SHA256SUMS
+   sha256sum build/*/bin/kernel_*.bin > SHA256SUMS
    ```
+
 3. Sign the checksum file:
    ```bash
-   python3 server/sign_release.py --key release_key.pem --input SHA256SUMS
+   python3 server/sign_tool.py sign \
+     --key release_key.sec \
+     --input SHA256SUMS
    ```
-4. Attach `SHA256SUMS` and `SHA256SUMS.sig` to the GitHub Release
+
+4. Publish: `SHA256SUMS`, `SHA256SUMS.sig`, and all kernel binaries.
 
 ### Verification
 
-Users can verify downloads:
+Users verify downloads with:
 
 ```bash
+python3 server/sign_tool.py verify \
+  --key release_key.pub \
+  --input SHA256SUMS
 sha256sum -c SHA256SUMS
-python3 verify_release.py --key release_pubkey.pem --sig SHA256SUMS.sig SHA256SUMS
 ```
 
 ---
 
 ## Distribution Channels
 
-| Channel              | URL                                   | Content             |
-|----------------------|---------------------------------------|---------------------|
-| GitHub Releases      | github.com/QatarIT/AlJefra-OS/releases | Binaries + source  |
-| Website              | os.aljefra.com/download               | ISO, USB images     |
-| Marketplace          | store.aljefra.com                     | .ajdrv drivers      |
+| Channel           | URL / Location                          | Content              |
+|-------------------|-----------------------------------------|----------------------|
+| GitHub Releases   | github.com/QatarIT/AlJefra-OS/releases  | Binaries + source    |
+| Website           | os.aljefra.com/download                  | ISO, USB images      |
+| Marketplace       | os.aljefra.com/marketplace               | .ajdrv driver pkgs   |
+
+### GitHub Release Notes Template
+
+```markdown
+# AlJefra OS vX.Y.Z
+
+**Release date:** YYYY-MM-DD
+
+## Highlights
+- Bullet point summary of major changes
+
+## Downloads
+| File | Architecture | Size | SHA-256 |
+|------|-------------|------|---------|
+| kernel_x86_64.bin | x86-64 | XXX KB | abc123... |
+| kernel_aarch64.bin | ARM64 | XXX KB | def456... |
+| kernel_riscv64.bin | RISC-V | XXX KB | ghi789... |
+| aljefra-os-vX.Y.Z.iso | x86-64 | X.X MB | jkl012... |
+
+## Full Changelog
+See [CHANGELOG.md](CHANGELOG.md) for details.
+```
 
 ---
 
-## Hotfix Process
+## Post-Release
 
-For critical bugs in a released version:
-
-1. Create a `hotfix/X.Y.Z` branch from the release tag
-2. Apply the minimal fix
-3. Test on all affected architectures
-4. Update `CHANGELOG.md` with the fix
-5. Tag and release as `vX.Y.Z`
-6. Merge the hotfix branch back into `dev`
-
-Hotfixes must be small and focused. New features never go through the
-hotfix process.
+1. Announce on os.aljefra.com and GitHub.
+2. Update the marketplace server to serve the new version.
+3. Monitor GitHub issues for regression reports.
+4. Begin `dev` work on the next version.
 
 ---
 

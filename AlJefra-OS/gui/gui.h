@@ -104,8 +104,8 @@ typedef struct {
 #define GUI_CLIP_STACK_MAX  16
 
 /* ── Back-buffer for flicker-free rendering ── */
-/* Allocated statically; sized for up to 1920x1080x4 = ~8 MB */
-#define GUI_BACKBUF_MAX_PIXELS  (1920 * 1080)
+/* Allocated statically; sized for up to 1024x768x4 = ~3 MB */
+#define GUI_BACKBUF_MAX_PIXELS  (1024 * 768)
 
 /* ======================================================================
  * Public API

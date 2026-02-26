@@ -31,13 +31,28 @@
 
 /* These symbols are defined in the architecture linker scripts and mark
  * the boundaries of kernel sections.  We declare them as extern char[]
- * so we can take their addresses without creating actual storage. */
+ * so we can take their addresses without creating actual storage.
+ *
+ * x86-64 uses single-underscore names; ARM64 and RISC-V use double-underscore.
+ * We alias them via preprocessor to a common name set. */
 
+#if defined(__x86_64__) || defined(_M_X64)
 extern char _kernel_start[];
 extern char _load_end[];
 extern char _bss_start[];
 extern char _bss_end[];
 extern char _end[];
+#else
+/* ARM64 and RISC-V linker scripts use __bss_start / __bss_end */
+extern char __bss_start[];
+extern char __bss_end[];
+/* Provide fallback aliases for symbols not in these linker scripts */
+#define _kernel_start  __bss_start  /* approximate: start of kernel image */
+#define _load_end      __bss_start  /* approximate: end of loaded data */
+#define _bss_start     __bss_start
+#define _bss_end       __bss_end
+#define _end           __bss_end  /* approximate: end of kernel image */
+#endif
 
 /* ---- Alignment helpers ---- */
 

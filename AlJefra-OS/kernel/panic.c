@@ -189,6 +189,7 @@ static void walk_stack(uint64_t *frames, uint32_t *depth)
         fp = frame[0];
 #elif defined(__riscv) && (__riscv_xlen == 64)
         /* RISC-V: [fp-8] = saved ra, [fp-16] = saved fp */
+        (void)frame;
         frames[i] = *(uint64_t *)(fp - 8);
         fp = *(uint64_t *)(fp - 16);
 #endif

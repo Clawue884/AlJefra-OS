@@ -9,10 +9,10 @@
  * raw binary at the specified addresses without requiring a 32-bit ELF.
  *
  * Memory layout:
- *   0x00000000 - 0x00100000  Legacy/BIOS area
- *   0x00100000 - ...         Kernel text+rodata+data (loaded by bootloader)
- *   0x00400000 - 0x00406000  Boot page tables (PML4, PDPT, PD×4)
- *   0x00500000 - 0x00510000  Boot stack (64KB)
+ *   0x00000000 - 0x00010000  Reserved (IVT, BDA, etc.)
+ *   0x00010000 - 0x00016000  Boot page tables (PML4, PDPT, PD×4)
+ *   0x00070000 - 0x00080000  Boot stack (64KB, grows down from 0x80000)
+ *   0x00100000 - ...         Kernel text+rodata+data+BSS (loaded by bootloader)
  *   0x00800000 - 0x01000000  DMA region (used by drivers)
  *   0x01000000 - 0x02000000  Page pool (used by MMU HAL)
  */
@@ -57,41 +57,42 @@ _boot32:
     movl %eax, (boot_mb_magic)
 
     /* ── Set up page tables ── */
-    /* PML4 at 0x400000, PDPT at 0x401000, PD[0-3] at 0x402000-0x405000 */
+    /* PML4 at 0x10000, PDPT at 0x11000, PD[0-3] at 0x12000-0x15000
+     * Placed in low conventional memory to avoid overlap with kernel BSS. */
 
     /* Zero 6 pages of page tables */
-    movl $0x400000, %edi
+    movl $0x10000, %edi
     xorl %eax, %eax
     movl $(6 * 4096 / 4), %ecx
     rep stosl
 
-    /* PML4[0] -> PDPT at 0x401000 (present + writable) */
-    movl $0x401000, %eax
+    /* PML4[0] -> PDPT at 0x11000 (present + writable) */
+    movl $0x11000, %eax
     orl  $0x03, %eax        /* P | RW */
-    movl %eax, 0x400000
+    movl %eax, 0x10000
 
-    /* PDPT[0] -> PD[0] at 0x402000 */
-    movl $0x402000, %eax
+    /* PDPT[0] -> PD[0] at 0x12000 */
+    movl $0x12000, %eax
     orl  $0x03, %eax
-    movl %eax, 0x401000
+    movl %eax, 0x11000
 
-    /* PDPT[1] -> PD[1] at 0x403000 */
-    movl $0x403000, %eax
+    /* PDPT[1] -> PD[1] at 0x13000 */
+    movl $0x13000, %eax
     orl  $0x03, %eax
-    movl %eax, 0x401008
+    movl %eax, 0x11008
 
-    /* PDPT[2] -> PD[2] at 0x404000 */
-    movl $0x404000, %eax
+    /* PDPT[2] -> PD[2] at 0x14000 */
+    movl $0x14000, %eax
     orl  $0x03, %eax
-    movl %eax, 0x401010
+    movl %eax, 0x11010
 
-    /* PDPT[3] -> PD[3] at 0x405000 */
-    movl $0x405000, %eax
+    /* PDPT[3] -> PD[3] at 0x15000 */
+    movl $0x15000, %eax
     orl  $0x03, %eax
-    movl %eax, 0x401018
+    movl %eax, 0x11018
 
     /* Fill PD[0-3] with 2MB pages: identity map 0 - 4GB */
-    movl $0x402000, %edi
+    movl $0x12000, %edi
     movl $0x00000083, %eax  /* 0MB, Present | RW | PS (2MB page) */
     movl $0, %edx
     movl $2048, %ecx
@@ -111,7 +112,7 @@ _boot32:
     movl %eax, %cr4
 
     /* Load PML4 into CR3 */
-    movl $0x400000, %eax
+    movl $0x10000, %eax
     movl %eax, %cr3
 
     /* ── Enable Long Mode (EFER.LME) ── */
@@ -143,8 +144,8 @@ _boot64:
     movw %ax, %gs
     movw %ax, %ss
 
-    /* Set up stack at 0x510000 (64KB stack area) */
-    movq $0x510000, %rsp
+    /* Set up stack at 0x80000 (64KB stack area, grows down to 0x70000) */
+    movq $0x80000, %rsp
     xorq %rbp, %rbp
 
     /* Enable SSE (needed by compiler-generated code) */

@@ -1,9 +1,8 @@
 # Contributing to AlJefra OS
 
 AlJefra OS welcomes contributions from developers worldwide. Whether you are
-fixing a typo, adding a driver, improving documentation, or proposing a new
-feature, your work helps build the first AI-native, self-evolving operating
-system.
+fixing a bug, writing a driver, improving documentation, or adding GUI widgets,
+your work helps build the first AI-native operating system.
 
 This guide explains how to contribute effectively.
 
@@ -18,9 +17,10 @@ This guide explains how to contribute effectively.
 5. [Pull Request Process](#pull-request-process)
 6. [Code Review Guidelines](#code-review-guidelines)
 7. [Commit Message Format](#commit-message-format)
-8. [Areas Needing Help](#areas-needing-help)
-9. [Communication](#communication)
-10. [License](#license)
+8. [Testing Requirements](#testing-requirements)
+9. [Areas Needing Help](#areas-needing-help)
+10. [Communication](#communication)
+11. [License](#license)
 
 ---
 
@@ -28,90 +28,71 @@ This guide explains how to contribute effectively.
 
 ### Prerequisites
 
-Install the build toolchain on a Debian/Ubuntu host:
+Install the following on a Debian/Ubuntu system (or equivalent on your distro):
 
 ```bash
 sudo apt install nasm gcc make qemu-system-x86 qemu-system-arm qemu-system-misc \
-  aarch64-linux-gnu-gcc riscv64-linux-gnu-gcc python3 python3-pip
+  aarch64-linux-gnu-gcc riscv64-linux-gnu-gcc python3 python3-pip git
 ```
 
-### Clone the Repository
+### Fork, Clone, Build
 
 ```bash
-git clone https://github.com/QatarIT/AlJefra-OS.git
+# 1. Fork the repository on GitHub
+
+# 2. Clone your fork
+git clone https://github.com/<your-user>/AlJefra-OS.git
 cd AlJefra-OS
-```
 
-### First Build
-
-```bash
-# Build for x86-64 (default)
+# 3. Build for x86-64
 make ARCH=x86_64
 
-# Or build all three architectures
-make all-arch
-```
-
-### First Boot (QEMU)
-
-```bash
-# x86-64
+# 4. Run on QEMU
 qemu-system-x86_64 -machine q35 -cpu Westmere -m 256 -smp 1 \
-  -serial stdio -display none -kernel build/x86_64/bin/kernel_x86_64.bin
-
-# ARM64
-qemu-system-aarch64 -M virt -cpu cortex-a72 -m 256 \
-  -serial stdio -display none -kernel build/aarch64/bin/kernel_aarch64.bin
-
-# RISC-V 64
-qemu-system-riscv64 -M virt -m 256 \
-  -serial stdio -display none -kernel build/riscv64/bin/kernel_riscv64.bin
+  -kernel build/x86_64/bin/kernel_x86_64.bin -nographic
 ```
 
-If you see the boot banner and a `Ready` prompt, your environment is working.
+If the kernel boots to the "AlJefra OS Ready" prompt, your environment is set
+up correctly.
 
 ---
 
 ## Architecture Overview
 
-AlJefra OS is organized into layers:
-
 ```
-Applications / AI Agent
-        |
-   Kernel Core  (C, portable)
-   scheduler - syscalls - driver loader
-        |
-   HAL (Hardware Abstraction Layer)
-   9 headers: cpu, interrupt, timer, bus, io, mmu, smp, console, hal
-        |
-  +----------+----------+----------+
-  | x86-64   | AArch64  | RISC-V   |
-  | boot.S   | boot.S   | boot.S   |
-  | APIC     | GIC      | PLIC     |
-  | HPET     | GenTimer  | CLINT   |
-  +----------+----------+----------+
++-------------------------------------------+
+|        Applications / AI Agent            |
++-------------------------------------------+
+|       Kernel Core (C, portable)           |
+|  scheduler - syscalls - driver loader     |
++-------------------------------------------+
+|   HAL -- Hardware Abstraction Layer       |
++-------------+-------------+--------------+
+|   x86-64    |   AArch64   |  RISC-V 64   |
+|   boot.S    |   boot.S    |  boot.S      |
+|   APIC/HPET |   GIC/Timer |  PLIC/SBI    |
++-------------+-------------+--------------+
 ```
 
-### Key Directories
+**Key directories:**
 
-| Path                  | Description                                  |
-|-----------------------|----------------------------------------------|
-| `hal/`                | Hardware Abstraction Layer headers            |
-| `arch/x86_64/`        | x86-64 architecture implementation            |
-| `arch/aarch64/`       | ARM64 architecture implementation             |
-| `arch/riscv64/`       | RISC-V 64-bit architecture implementation     |
-| `kernel/`             | Portable kernel core (scheduler, loader)      |
-| `drivers/`            | Portable C drivers (storage, net, input, etc) |
-| `drivers/runtime/`    | Runtime .ajdrv build tools                    |
-| `store/`              | Marketplace client + Ed25519 verification     |
-| `net/`                | TCP/IP, DHCP, DNS                             |
-| `ai/`                 | AI bootstrap agent                            |
-| `server/`             | Marketplace Flask REST API                    |
-| `src/aljefra/`        | x86-64 ASM kernel (legacy/standalone)         |
-| `programs/netstack/`  | Network stack + Claude API agent              |
-| `doc/`                | Architecture and API documentation            |
-| `website/`            | Static site for os.aljefra.com                |
+| Directory           | Purpose                                     |
+|---------------------|---------------------------------------------|
+| `hal/`              | Hardware abstraction headers (9 headers)     |
+| `arch/x86_64/`     | x86-64 architecture implementation           |
+| `arch/aarch64/`    | ARM64 architecture implementation            |
+| `arch/riscv64/`    | RISC-V 64-bit architecture implementation    |
+| `kernel/`          | Portable kernel core (scheduler, loader)     |
+| `drivers/`         | Portable C drivers (22+ drivers)             |
+| `drivers/runtime/` | Runtime .ajdrv driver build tools            |
+| `net/`             | Network stack (TCP/IP, DHCP)                 |
+| `store/`           | Marketplace client, Ed25519 verification     |
+| `ai/`              | AI bootstrap and evolution framework         |
+| `server/`          | Marketplace Flask REST API                   |
+| `src/aljefra/`     | x86-64 ASM kernel (legacy kernel path)       |
+| `programs/netstack/`| TLS + HTTP + AI agent (BearSSL)             |
+| `website/`         | Static website for os.aljefra.com            |
+| `doc/`             | Architecture and specification documents     |
 
 ---
 
@@ -119,72 +100,69 @@ Applications / AI Agent
 
 ### C Code
 
-- **Style**: K&R (opening brace on the same line as the statement)
-- **Indentation**: 4 spaces (no tabs)
-- **Line length**: 80 characters maximum
-- **Naming**: `snake_case` for functions and variables, `UPPER_SNAKE` for macros
-- **File guards**: `#ifndef ALJEFRA_<MODULE>_H` / `#define` / `#endif`
-- **Comments**: `/* C89-style block comments */` for multi-line, `//` for single-line
-- **Types**: Use `<stdint.h>` fixed-width types (`uint32_t`, `int64_t`, etc.)
-- **Headers**: Include the narrowest header needed, not `hal.h` when `cpu.h` suffices
+- **Style:** K&R (Kernighan and Ritchie)
+- **Indent:** 4 spaces (no tabs)
+- **Line length:** 80 characters maximum
+- **Braces:** Opening brace on the same line as the statement
+- **Naming:** `snake_case` for functions and variables, `UPPER_CASE` for macros
+- **Headers:** Include guards using `#ifndef ALJEFRA_<MODULE>_H`
+- **Comments:** Use `/* */` for block comments, `//` for single-line comments
+- **License header:** Every new file must start with `/* SPDX-License-Identifier: MIT */`
 
 Example:
 
 ```c
-/* drivers/storage/example.c — Example storage driver */
+/* SPDX-License-Identifier: MIT */
+/* AlJefra OS -- My driver */
 
-#include "../../hal/bus.h"
-#include "../../hal/io.h"
+#include "../hal/hal.h"
 
-static uint32_t example_read_reg(volatile void *base, uint32_t off) {
-    return hal_mmio_read32((volatile uint8_t *)base + off);
+static uint32_t my_driver_read_reg(volatile void *base, uint32_t offset)
+{
+    return hal_mmio_read32((volatile uint8_t *)base + offset);
 }
 
-hal_status_t example_init(hal_device_t *dev) {
-    volatile void *bar = hal_map_bar(dev, 0);
-    if (!bar)
-        return HAL_ERR_NO_DEVICE;
+hal_status_t my_driver_init(hal_device_t *dev)
+{
+    volatile void *bar = hal_bus_map_bar(dev, 0);
+    if (!bar) {
+        hal_console_puts("my_driver: failed to map BAR0\n");
+        return HAL_ERR_IO;
+    }
 
-    uint32_t version = example_read_reg(bar, 0x00);
-    hal_console_puts("example: version ");
-    /* ... */
+    uint32_t status = my_driver_read_reg(bar, REG_STATUS);
+    if (status & STATUS_ERROR) {
+        return HAL_ERR_DEVICE;
+    }
+
     return HAL_OK;
 }
 ```
 
-### Assembly (NASM, Intel syntax)
+### Assembly Code (NASM/GNU AS)
 
-- **Syntax**: NASM Intel syntax (used in the x86-64 ASM kernel)
-- **Indentation**: Tab characters for instructions, labels at column 0
-- **Registers**: Lowercase (`rax`, `rdi`, `rsi`)
-- **Comments**: `;` at end of line or on a dedicated line
-- **Sections**: Use `SECTION .text` / `SECTION .data` / `SECTION .bss`
-- **Labels**: `align 16` before hot-path entry points
+- **Syntax:** NASM Intel syntax for x86-64 kernel files, GNU AS for arch boot
+- **Indent:** Tab characters
+- **Labels:** `snake_case`, prefixed with module name (e.g., `e1000_init:`)
+- **Comments:** `;` for NASM, `//` or `/* */` for GNU AS
+- **Section headers:** Use clear section markers
 
-Example:
+Example (NASM):
 
 ```nasm
-; pci_read32 — Read a 32-bit PCI config register
-; Input:  EDI = BDF (bus/device/function), ESI = register offset
-; Output: EAX = value
+; AlJefra OS -- Example driver
+; SPDX-License-Identifier: MIT
+
 align 16
-pci_read32:
-	mov eax, edi
-	shl eax, 8
-	or eax, esi
-	or eax, 0x80000000
-	mov dx, 0x0CF8
-	out dx, eax
-	mov dx, 0x0CFC
-	in eax, dx
+my_driver_init:
+	push rbx
+	mov rdi, [dev_base]		; BAR0 base address
+	mov eax, [rdi + REG_CTRL]	; Read control register
+	or eax, CTRL_RESET
+	mov [rdi + REG_CTRL], eax	; Write reset bit
+	pop rbx
 	ret
 ```
-
-### GCC Assembly (.S files)
-
-- **Syntax**: GNU AS (AT&T syntax for ARM64 and RISC-V `.S` files)
-- **Indentation**: Tab characters
-- **Assembled with GCC**, not NASM
 
 ---
 
@@ -193,114 +171,158 @@ pci_read32:
 ### Build Commands
 
 ```bash
-make ARCH=x86_64       # Build x86-64 kernel + drivers
-make ARCH=aarch64      # Build ARM64 kernel + drivers
-make ARCH=riscv64      # Build RISC-V kernel + drivers
-make all-arch          # Build all three
-make clean             # Remove build artifacts
+# Build for a specific architecture
+make ARCH=x86_64
+make ARCH=aarch64
+make ARCH=riscv64
+
+# Build all architectures
+make all-arch
+
+# Clean build artifacts
+make clean
 ```
 
-### Testing Requirements
-
-Every pull request must:
-
-1. **Compile cleanly** on all three architectures with no warnings (`-Wall -Werror`)
-2. **Boot successfully** in QEMU for any architecture the change touches
-3. **Not regress** existing functionality (boot, device scan, driver load)
-4. **Include QEMU test commands** in the PR description if adding new hardware support
-
-### Running Tests
+### QEMU Testing
 
 ```bash
-# Boot test (x86-64 example — should print banner and reach Ready)
-timeout 10 qemu-system-x86_64 -machine q35 -cpu Westmere -m 256 \
-  -smp 1 -serial stdio -display none -kernel build/x86_64/bin/kernel_x86_64.bin
+# x86-64
+qemu-system-x86_64 -machine q35 -cpu Westmere -m 256 -smp 1 \
+  -kernel build/x86_64/bin/kernel_x86_64.bin -nographic
+
+# ARM64
+qemu-system-aarch64 -M virt -cpu cortex-a72 -m 256 \
+  -kernel build/aarch64/bin/kernel_aarch64.bin -nographic
+
+# RISC-V 64
+qemu-system-riscv64 -M virt -m 256 \
+  -kernel build/riscv64/bin/kernel_riscv64.bin -nographic
 ```
 
-Verify the output includes the boot banner and `Ready` prompt.
+Every change must boot successfully on at least the architecture you modified.
+Cross-architecture changes (HAL, kernel, portable drivers) should be tested on
+all three.
 
 ---
 
 ## Pull Request Process
 
-1. **Fork** the repository on GitHub
-2. **Create a feature branch** from `main`:
+1. **Fork** the repository on GitHub.
+2. **Create a branch** from `dev` (not `main`):
    ```bash
-   git checkout -b feature/my-driver
+   git checkout dev
+   git pull origin dev
+   git checkout -b my-feature
    ```
-3. **Make your changes** following the code style above
-4. **Test locally** in QEMU on the relevant architecture(s)
-5. **Commit** with a descriptive message (see format below)
-6. **Push** to your fork and open a pull request against `main`
-7. **Fill in the PR template**: describe what changed, why, and how to test it
-8. **Respond to review feedback** promptly
+3. **Write your code**, following the style guide above.
+4. **Test** on QEMU (see above).
+5. **Commit** with a descriptive message (see format below).
+6. **Push** to your fork:
+   ```bash
+   git push origin my-feature
+   ```
+7. **Open a Pull Request** against `dev` on GitHub.
+8. **Respond to review feedback** promptly.
 
-### PR Checklist
+### PR Description Template
 
-- [ ] Code follows the project style guide
-- [ ] All modified architectures boot cleanly in QEMU
-- [ ] No new compiler warnings
-- [ ] Commit messages follow the required format
-- [ ] Documentation updated if adding a new API or driver
+```
+## Summary
+Brief description of what this PR does and why.
+
+## Changes
+- List of specific changes
+
+## Testing
+- How you tested the changes (QEMU command, architecture, etc.)
+
+## Related Issues
+Fixes #123 (if applicable)
+```
 
 ---
 
 ## Code Review Guidelines
 
-- All pull requests require **at least one approving review** before merge
-- Reviewers should check:
-  - Correctness: Does the code do what the PR claims?
-  - Style: Does it follow C/ASM conventions above?
-  - Safety: No undefined behavior, no unbounded buffers, no missing NULL checks
-  - Architecture: Changes to HAL must work across all three architectures
-  - Testing: Has the author confirmed QEMU boot?
-- Be respectful and constructive in reviews
-- Use "Request Changes" only for issues that must be fixed before merge
-- Use "Comment" for suggestions and non-blocking feedback
+- All pull requests require **at least one approval** before merging.
+- Reviewers should check for:
+  - Correctness: Does the code work as intended?
+  - Style: Does it follow the C/ASM style guidelines?
+  - Safety: No undefined behavior, no buffer overflows, no uninitialized memory.
+  - Portability: Does it work across all three architectures (if applicable)?
+  - Testing: Has the author tested on QEMU?
+- Be constructive and specific in review comments.
+- If a PR is large, consider breaking it into smaller, reviewable pieces.
 
 ---
 
 ## Commit Message Format
 
-Follow this format:
+Use the following format:
 
 ```
 component: short description
 
-Optional longer explanation (wrap at 72 characters).
-Explain the "why", not just the "what".
+Optional longer description explaining the motivation and approach.
 ```
-
-**Component prefixes:**
-
-| Prefix          | Scope                                |
-|-----------------|--------------------------------------|
-| `kernel`        | Kernel core (scheduler, loader)      |
-| `hal`           | HAL headers or shared HAL code       |
-| `arch/x86_64`   | x86-64 architecture code             |
-| `arch/aarch64`  | ARM64 architecture code              |
-| `arch/riscv64`  | RISC-V architecture code             |
-| `drivers/net`   | Network drivers                      |
-| `drivers/storage`| Storage drivers                     |
-| `drivers/input` | Input drivers                        |
-| `drivers/display`| Display/framebuffer drivers         |
-| `store`         | Marketplace client and verification  |
-| `net`           | Network stack (TCP, DHCP, DNS)       |
-| `ai`            | AI agent and bootstrap               |
-| `server`        | Marketplace server                   |
-| `doc`           | Documentation                        |
-| `build`         | Makefile, build scripts, CI          |
-| `website`       | os.aljefra.com static site           |
 
 **Examples:**
 
 ```
-drivers/storage: add UFS driver for eMMC 5.1 devices
-arch/aarch64: fix GIC priority mask for IRQ 32+
-hal: add hal_cache_flush() to CPU abstraction
-doc: document .ajdrv signing process
-build: enable -Werror for CI builds
+kernel/fs: add file rename support
+
+The BMFS filesystem lacked a rename operation. This adds fs_rename()
+which updates the directory entry in-place without copying data.
 ```
+
+```
+drivers/net: fix e1000 link-up detection on I219-LM
+```
+
+```
+hal: add hal_timer_deadline() for one-shot timer support
+```
+
+```
+doc: update hardware compatibility list with NVMe results
+```
+
+**Component prefixes:**
+
+| Prefix            | Scope                                |
+|-------------------|--------------------------------------|
+| `kernel/`         | Kernel core (scheduler, loader)      |
+| `kernel/fs`       | Filesystem                           |
+| `hal/`            | HAL headers and contracts            |
+| `arch/x86_64`     | x86-64 architecture code             |
+| `arch/aarch64`    | ARM64 architecture code              |
+| `arch/riscv64`    | RISC-V architecture code             |
+| `drivers/storage`  | Storage drivers                     |
+| `drivers/net`     | Network drivers                      |
+| `drivers/input`   | Input drivers                        |
+| `drivers/display` | Display drivers                      |
+| `store/`          | Marketplace client                   |
+| `net/`            | Network stack                        |
+| `ai/`             | AI subsystem                         |
+| `gui/`            | GUI / desktop                        |
+| `doc/`            | Documentation                        |
+| `build/`          | Build system / Makefile              |
+
+---
+
+## Testing Requirements
+
+Before submitting a PR:
+
+1. **Boot test:** Your change must not break boot on any architecture you
+   touched. Run the QEMU commands listed above.
+2. **No regressions:** If you modify a driver, verify that existing
+   functionality still works (e.g., a storage driver can still read/write).
+3. **New drivers:** Must include at least one QEMU test scenario.
+4. **Runtime drivers (.ajdrv):** Must build successfully with
+   `drivers/runtime/build_ajdrv.sh` and load via the marketplace flow.
+5. **Cross-arch changes:** If you modify code in `hal/`, `kernel/`, or
+   portable drivers, test on all three architectures.
 
 ---
 
@@ -308,38 +330,40 @@ build: enable -Werror for CI builds
 
 We especially welcome contributions in these areas:
 
-- **Drivers**: Audio (HDA), Bluetooth, AMD GPU, Intel GPU, additional WiFi chipsets
-- **GUI Widgets**: Buttons, text input, scroll views, file browser, terminal emulator
-- **Desktop Shell**: Window manager, taskbar, theme engine, settings panel
-- **Documentation**: Tutorials, API reference improvements, architecture diagrams
-- **Testing**: QEMU boot tests, hardware reports, regression test scripts
-- **Translations**: Arabic, French, Spanish, Chinese, Hindi — for GUI strings and docs
-- **Tooling**: CI/CD pipeline, automated boot tests, static analysis integration
-- **Security**: Audit the Ed25519 implementation, review TLS configuration
+- **Drivers:** New hardware drivers (audio, Bluetooth, AMD GPU, Intel GPU)
+- **GUI widgets:** Button, textbox, scrollbar, file browser, terminal emulator
+- **Desktop shell:** Window manager, taskbar, theme engine
+- **Documentation:** Tutorials, API docs, getting-started guides
+- **Testing:** Hardware testing on real devices, automated CI/CD
+- **Translations:** Arabic, French, Spanish, Chinese, and more
+- **AI chat system:** Natural language command processing, offline SLM
+- **Security:** Secure boot chain, memory protection, crash recovery
+- **Tooling:** CI pipeline, automated QEMU boot tests, code coverage
 
 ---
 
 ## Communication
 
-- **Bug reports**: Open a [GitHub Issue](https://github.com/QatarIT/AlJefra-OS/issues) with steps to reproduce
-- **Feature requests**: Use [GitHub Discussions](https://github.com/QatarIT/AlJefra-OS/discussions) to propose ideas
-- **Questions**: GitHub Discussions or open an issue tagged `question`
-- **Security vulnerabilities**: Email security@qatarit.com (do not open a public issue)
+- **Bug reports:** Open a GitHub Issue with reproduction steps and QEMU output.
+- **Feature requests:** Open a GitHub Discussion under the "Ideas" category.
+- **Questions:** Open a GitHub Discussion under the "Q&A" category.
+- **Security issues:** Email security@qatarit.com. Do NOT open a public issue.
 
 ---
 
 ## Code of Conduct
 
-All contributors must follow our [Code of Conduct](CODE_OF_CONDUCT.md). We are
-committed to providing a welcoming and inclusive environment for everyone.
+All contributors must follow the [Code of Conduct](CODE_OF_CONDUCT.md). We are
+committed to a welcoming, inclusive, harassment-free community.
 
 ---
 
 ## License
 
 AlJefra OS is released under the **MIT License**. By contributing, you agree
-that your contributions will be licensed under the same terms. See
-[LICENSE](LICENSE) for details.
+that your contributions will be licensed under the same terms.
+
+See [LICENSE](LICENSE) for the full text.
 
 ---
 

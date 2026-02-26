@@ -16,18 +16,18 @@
 /* ======================================================================
  * Limits (no dynamic allocation)
  * ====================================================================== */
-#define WIDGET_MAX_TOTAL       128     /* Total widget instances            */
-#define WIDGET_MAX_CHILDREN    32      /* Children per panel                */
+#define WIDGET_MAX_TOTAL       48      /* Total widget instances            */
+#define WIDGET_MAX_CHILDREN    16      /* Children per panel                */
 #define PANEL_MAX              8       /* Root panels on screen             */
 #define WIDGET_TITLE_MAX       64
 #define WIDGET_TEXT_MAX        256
 #define WIDGET_BUTTON_TEXT_MAX 64
-#define WIDGET_INPUT_MAX       1024
+#define WIDGET_INPUT_MAX       512
 #define WIDGET_PLACEHOLDER_MAX 64
-#define WIDGET_LIST_MAX        256     /* Max items in a list view          */
+#define WIDGET_LIST_MAX        64      /* Max items in a list view          */
 #define WIDGET_LIST_ITEM_MAX   64      /* Max chars per list item           */
-#define WIDGET_CHAT_MSG_MAX    256     /* Max messages in chat view         */
-#define WIDGET_CHAT_TEXT_MAX   512     /* Max chars per chat message        */
+#define WIDGET_CHAT_MSG_MAX    32      /* Max messages in chat view         */
+#define WIDGET_CHAT_TEXT_MAX   256     /* Max chars per chat message        */
 
 /* ======================================================================
  * Widget types
