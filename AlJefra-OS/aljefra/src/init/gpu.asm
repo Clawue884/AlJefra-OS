@@ -19,7 +19,7 @@ init_gpu:
 
 	; Initialize the NVIDIA GPU driver
 	call gpu_init
-	jc init_gpu_no_gpu
+	jc init_gpu_done		; EVOLVED Gen-10: merged duplicate exit paths
 
 	; Output GPU info via serial
 	mov esi, msg_gpu_vram
@@ -35,11 +35,7 @@ init_gpu:
 	mov eax, [os_GPU_ChipID]
 	call os_debug_dump_eax
 
-	mov esi, msg_ok
-	call os_debug_string
-	ret
-
-init_gpu_no_gpu:
+init_gpu_done:
 	mov esi, msg_ok
 	call os_debug_string
 	ret

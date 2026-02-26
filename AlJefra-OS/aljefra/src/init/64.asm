@@ -16,8 +16,7 @@ init_64:
 	mov ecx, 122880			; Clear 960 KiB (122880 qwords)
 	xor eax, eax
 .clear_loop:
-	movnti [rdi], eax		; Non-temporal store: bypasses cache
-	movnti [rdi+4], eax		; Two 32-bit stores per iteration
+	movnti [rdi], rax		; EVOLVED Gen-10: single 64-bit NT store (was two 32-bit)
 	add rdi, 8
 	dec ecx
 	jnz .clear_loop
@@ -46,8 +45,7 @@ init_64:
 	lodsw
 	mov [os_HPET_CounterMin], ax
 	mov esi, 0x00005080		; VIDEO_*
-	xor eax, eax
-	lodsq
+	lodsq				; EVOLVED Gen-10: removed dead xor (lodsq overwrites RAX)
 	mov [os_screen_lfb], rax
 	lodsw
 	mov [os_screen_x], ax
@@ -65,9 +63,8 @@ init_64:
 	mov esi, 0x000050E2
 	lodsb
 	mov [os_boot_mode], al
-	xor eax, eax
 	mov esi, 0x00005604		; IOAPIC
-	lodsd
+	lodsd				; EVOLVED Gen-10: removed dead xor (lodsd zero-extends to RAX)
 	mov [os_IOAPICAddress], rax
 
 	; Create exception gate stubs (Pure64 has already set the correct gate markers)

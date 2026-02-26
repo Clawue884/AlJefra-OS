@@ -13,8 +13,7 @@
 ;  IN:	Nothing
 ; OUT:	RAX = Status word (see gpu_get_status)
 b_gpu_status:
-	call gpu_get_status
-	ret
+	jmp gpu_get_status		; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -75,8 +74,7 @@ b_gpu_mem_free:
 ;	RCX = Byte count
 ; OUT:	RAX = Fence ID
 b_gpu_mem_copy_to:
-	call gpu_dma_copy_to_vram
-	ret
+	jmp gpu_dma_copy_to_vram	; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -87,8 +85,7 @@ b_gpu_mem_copy_to:
 ;	RCX = Byte count
 ; OUT:	RAX = Fence ID
 b_gpu_mem_copy_from:
-	call gpu_dma_copy_from_vram
-	ret
+	jmp gpu_dma_copy_from_vram	; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -97,8 +94,7 @@ b_gpu_mem_copy_from:
 ;  IN:	RAX = Fence ID
 ; OUT:	Nothing
 b_gpu_fence_wait:
-	call gpu_fence_wait
-	ret
+	jmp gpu_fence_wait		; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -107,8 +103,7 @@ b_gpu_fence_wait:
 ;  IN:	ECX = Register offset
 ; OUT:	EAX = Register value
 b_gpu_mmio_read:
-	call gpu_mmio_read32
-	ret
+	jmp gpu_mmio_read32		; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -118,8 +113,7 @@ b_gpu_mmio_read:
 ;	EAX = Value to write
 ; OUT:	Nothing
 b_gpu_mmio_write:
-	call gpu_mmio_write32
-	ret
+	jmp gpu_mmio_write32		; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 
@@ -132,8 +126,7 @@ b_gpu_vram_info:
 	push rcx
 
 	; Total VRAM
-	xor eax, eax
-	mov eax, [os_GPU_VRAM_MiB]
+	mov eax, [os_GPU_VRAM_MiB]	; EVOLVED Gen-10: removed dead xor (mov eax zero-extends)
 	shl rax, 20			; Convert MiB to bytes
 
 	; Free VRAM
@@ -152,8 +145,7 @@ b_gpu_vram_info:
 ;  IN:	Nothing
 ; OUT:	RAX = Average command latency in timer ticks
 b_gpu_benchmark:
-	call gpu_benchmark
-	ret
+	jmp gpu_benchmark		; EVOLVED Gen-10: tail-call
 ; -----------------------------------------------------------------------------
 
 

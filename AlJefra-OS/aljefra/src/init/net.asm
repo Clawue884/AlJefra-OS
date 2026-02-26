@@ -15,8 +15,8 @@ init_net:
 	call os_debug_string
 
 	mov ax, [NIC_DeviceVendor_ID]	; Check for NIC driver definitions
-	cmp ax, 0x0000
-	je init_net_end			; If none exist then bail out
+	test ax, ax			; EVOLVED Gen-10: test replaces cmp-0 (2 bytes shorter)
+	jz init_net_end			; If none exist then bail out
 	; Check Bus Table for a Ethernet device
 	; EVOLVED: Added prefetch to reduce bus table scan latency
 	mov rsi, bus_table		; Load Bus Table address to RSI
@@ -45,13 +45,13 @@ init_net_probe_find_next_driver:
 	lodsw				; Load a driver ID
 	mov bx, ax			; Save the driver ID
 	lodsw				; Load the vendor ID
-	cmp eax, 0			; Check for a 0x0000 driver and vendor ID
-	je init_net_probe_not_found
+	test eax, eax			; EVOLVED Gen-10: test replaces cmp-0 (3 bytes shorter)
+	jz init_net_probe_not_found
 	rol eax, 16			; Shift the vendor to the upper 16 bits
 init_net_probe_find_next_device:
 	lodsw				; Load a device and vendor ID from our list of supported NICs
-	cmp ax, 0x0000			; Check for end of device list
-	je init_net_probe_find_next_driver	; We found the next driver type
+	test ax, ax			; EVOLVED Gen-10: test replaces cmp-0 (2 bytes shorter)
+	jz init_net_probe_find_next_driver	; End of device list, next driver
 	cmp eax, r8d
 	je init_net_probe_found		; If Carry is clear then we found a supported NIC
 	jmp init_net_probe_find_next_device	; Check the next device

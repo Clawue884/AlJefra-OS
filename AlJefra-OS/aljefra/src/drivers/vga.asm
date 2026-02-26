@@ -229,8 +229,7 @@ vga_output_char:
 	push rax
 
 	push rax
-	mov ax, [vga_Cursor_Row]
-	and rax, 0x000000000000FFFF	; only keep the low 16 bits
+	movzx eax, word [vga_Cursor_Row]	; EVOLVED Gen-10: movzx replaces mov+and (1 instr vs 2)
 	mov cl, 80			; 80 columns per row
 	mul cl				; AX = AL * CL
 	mov bx, [vga_Cursor_Col]
@@ -325,8 +324,7 @@ vga_output_chars_tab:
 	mov ax, [vga_Cursor_Col]	; Grab the current cursor X value (ex 7)
 	mov cx, ax
 	add ax, 8			; Add 8 (ex 15)
-	shr ax, 3			; Clear lowest 3 bits (ex 8)
-	shl ax, 3			; Bug? 'xor al, 7' doesn't work...
+	and ax, 0xFFF8			; EVOLVED Gen-10: single AND replaces shr+shl pair (clears low 3 bits)
 	sub ax, cx			; (ex 8 - 7 = 1)
 	mov cx, ax
 	mov al, ' '
@@ -362,10 +360,9 @@ vga_clear_screen:
 
 	cld				; Clear the direction flag as we want to increment through memory
 
-	xor ecx, ecx
 	mov ax, 0x8F20			; 0x8F for gray background/bright white foreground, 0x20 for space (black) character
 	mov edi, 0xB8000
-	mov ecx, 2000			; 80 x 25
+	mov ecx, 2000			; EVOLVED Gen-10: removed dead xor ecx (overwritten by mov)
 	rep stosw			; Clear the screen. Store word in AX to RDI, RCX times
 
 	popfq
@@ -385,11 +382,10 @@ vga_draw_line:
 	push rax
 
 	; Clear the old line
-	xor eax, eax
-	mov ax, [vga_Cursor_Row]	; Gather the current cursor row
+	movzx eax, word [vga_Cursor_Row]	; EVOLVED Gen-10: movzx replaces xor+mov (1 instr vs 2)
 	cmp ax, [vga_Rows]
 	jne vga_draw_line_clear
-	mov ax, 0
+	xor eax, eax			; EVOLVED Gen-10: xor replaces mov ax,0 (shorter)
 vga_draw_line_clear:
 	mov ecx, 160
 	mul ecx
@@ -400,12 +396,11 @@ vga_draw_line_clear:
 	rep stosw
 
 	; Output the new line
-	xor eax, eax
-	mov ax, [vga_Cursor_Row]	; Gather the current cursor row
-	add ax, 1			; Increment it
+	movzx eax, word [vga_Cursor_Row]	; EVOLVED Gen-10: movzx replaces xor+mov (1 instr vs 2)
+	inc eax				; EVOLVED Gen-10: inc eax replaces add ax,1 (2 bytes vs 4)
 	cmp ax, [vga_Rows]
 	jne vga_draw_line_continue
-	mov ax, 0
+	xor eax, eax			; EVOLVED Gen-10: xor replaces mov ax,0 (shorter)
 vga_draw_line_continue:
 	mov ecx, 160
 	mul ecx

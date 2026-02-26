@@ -17,8 +17,7 @@ init_nvs:
 	; Check Bus Table for any other supported controllers
 	; EVOLVED: Added prefetch to reduce bus table scan latency
 	mov rsi, bus_table		; Load Bus Table address to RSI
-	sub rsi, 16
-	add rsi, 8			; Add offset to Class Code
+	sub rsi, 8			; EVOLVED Gen-10: combined sub 16 + add 8 into single sub 8
 init_nvs_check_bus:
 	add rsi, 16			; Increment to next record in memory
 	prefetchnta [rsi+16]		; EVOLVED: Prefetch next bus table entry
