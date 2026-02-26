@@ -87,6 +87,47 @@ static uint64_t probe_bar_size(uint32_t bus, uint32_t dev, uint32_t func,
 }
 
 /* ------------------------------------------------------------------ */
+/* PCIe BAR assignment                                                 */
+/* ------------------------------------------------------------------ */
+
+/* QEMU virt 32-bit PCIe MMIO window: 0x10000000 - 0x3EFEFFFF.
+ * When booting with -kernel (no firmware), BARs are unassigned.
+ * We assign them here from the MMIO window. */
+#define PCIE_MMIO_BASE    0x10000000ULL
+#define PCIE_MMIO_END     0x3EFF0000ULL
+static uint64_t next_bar_addr = PCIE_MMIO_BASE;
+
+static uint64_t align_up(uint64_t val, uint64_t align)
+{
+    return (val + align - 1) & ~(align - 1);
+}
+
+/* Assign a BAR address from the MMIO window if it's unassigned */
+static void assign_bar(uint32_t bus, uint32_t dev, uint32_t func,
+                        uint32_t bar_reg, uint64_t size, int is_64bit)
+{
+    if (size == 0 || size > (PCIE_MMIO_END - next_bar_addr))
+        return;
+
+    /* Align to BAR size (natural alignment) */
+    next_bar_addr = align_up(next_bar_addr, size);
+    if (next_bar_addr + size > PCIE_MMIO_END)
+        return;
+
+    /* Write low 32 bits (preserving type bits) */
+    uint32_t bar_type = ecam_read32(bus, dev, func, bar_reg) & 0xF;
+    ecam_write32(bus, dev, func, bar_reg,
+                  (uint32_t)(next_bar_addr & 0xFFFFFFFF) | bar_type);
+
+    if (is_64bit) {
+        ecam_write32(bus, dev, func, bar_reg + 4,
+                      (uint32_t)(next_bar_addr >> 32));
+    }
+
+    next_bar_addr += size;
+}
+
+/* ------------------------------------------------------------------ */
 /* PCIe enumeration                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -118,29 +159,50 @@ static uint32_t pcie_scan(hal_device_t *devs, uint32_t max)
                 d->dev  = dev;
                 d->func = func;
 
-                /* Read BARs */
+                /* Read and assign BARs */
                 for (int bar = 0; bar < 6; bar++) {
                     uint32_t bar_reg = 0x10 + bar * 4;
                     uint32_t bar_val = ecam_read32(bus, dev, func, bar_reg);
+                    int is_io = bar_val & 1;
+                    int is_64bit = 0;
 
-                    if (bar_val & 1) {
-                        /* I/O BAR */
+                    /* Probe BAR size */
+                    uint64_t size = probe_bar_size(bus, dev, func, bar_reg);
+                    d->bar_size[bar] = size;
+
+                    if (is_io) {
+                        /* I/O BAR — not used on ARM64 */
                         d->bar[bar] = bar_val & ~0x3ULL;
                     } else {
                         /* Memory BAR */
-                        d->bar[bar] = bar_val & ~0xFULL;
-                        /* Check for 64-bit BAR */
-                        if (((bar_val >> 1) & 3) == 2 && bar < 5) {
+                        is_64bit = (((bar_val >> 1) & 3) == 2);
+                        uint64_t addr = bar_val & ~0xFULL;
+
+                        if (is_64bit && bar < 5) {
                             uint32_t hi = ecam_read32(bus, dev, func, bar_reg + 4);
-                            d->bar[bar] |= ((uint64_t)hi << 32);
-                            d->bar_size[bar] = probe_bar_size(bus, dev, func, bar_reg);
+                            addr |= ((uint64_t)hi << 32);
+                        }
+
+                        /* If BAR is unassigned (0), assign from MMIO window */
+                        if (addr == 0 && size > 0) {
+                            assign_bar(bus, dev, func, bar_reg, size, is_64bit);
+                            /* Re-read after assignment */
+                            bar_val = ecam_read32(bus, dev, func, bar_reg);
+                            addr = bar_val & ~0xFULL;
+                            if (is_64bit) {
+                                uint32_t hi = ecam_read32(bus, dev, func, bar_reg + 4);
+                                addr |= ((uint64_t)hi << 32);
+                            }
+                        }
+
+                        d->bar[bar] = addr;
+
+                        if (is_64bit && bar < 5) {
                             bar++;  /* Skip next BAR (used for upper 32 bits) */
                             d->bar[bar] = 0;
                             d->bar_size[bar] = 0;
-                            continue;
                         }
                     }
-                    d->bar_size[bar] = probe_bar_size(bus, dev, func, bar_reg);
                 }
 
                 d->compatible[0] = '\0';

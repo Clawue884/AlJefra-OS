@@ -104,8 +104,9 @@
 
 ### 1.4 Integration
 - [x] Complete Ed25519 signature verification (curve25519 math, 1550 lines)
-- [ ] Integrate marketplace client with existing TLS/HTTPS stack
-- [ ] AI agent connects, sends hardware manifest, receives driver list
+- [x] Minimal TCP/IP client (net/tcp.c) — ARP + TCP handshake over raw Ethernet frames
+- [x] Marketplace HTTP client integrated: kernel → TCP → HTTP POST/GET → Flask server
+- [x] AI agent connects, sends hardware manifest, receives driver list (HTTP 200 verified)
 - [ ] Driver package (.ajdrv) downloaded over HTTPS, signature verified
 - [ ] Downloaded driver loaded at runtime, initializes hardware
 - [ ] Full cycle: cold boot → AI → driver download → functional (<60s)
@@ -152,7 +153,7 @@
 - [x] ARM64 QEMU `virt` machine boots to UART output (Cortex-A72)
 - [x] `_start` → hal_init → kernel_main runs successfully
 - [x] Bus scan discovers 4 devices (PCIe + DT)
-- [ ] TCP/IP + AI agent runs on ARM64 QEMU
+- [x] TCP/IP + marketplace client runs on ARM64 QEMU (DHCP → ARP → TCP → HTTP POST → Flask server)
 
 ### 2.3 Physical Hardware
 - [ ] Raspberry Pi 5 boots from SD card
@@ -233,11 +234,11 @@
 
 | Architecture | Binary Size | Objects | Status |
 |:------------|:-----------|:--------|:-------|
-| **x86-64**  | 104 KB     | 40      | Builds clean, boots on QEMU |
-| **ARM64**   | 109 KB     | 39      | Builds clean |
-| **RISC-V**  | 93 KB      | 39      | Builds clean |
+| **x86-64**  | 125 KB     | 42      | Builds clean, boots on QEMU |
+| **ARM64**   | 133 KB     | 41      | Builds clean, boots on QEMU, marketplace HTTP verified |
+| **RISC-V**  | 113 KB     | 41      | Builds clean, boots on QEMU |
 
-**Total**: ~115 source files, ~28,000 lines of C/ASM/Python/docs
+**Total**: ~118 source files, ~29,000 lines of C/ASM/Python/docs
 
 ```
 make ARCH=x86_64     # Build for x86-64 (default)

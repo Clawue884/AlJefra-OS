@@ -14,6 +14,8 @@
 
 /* Network/marketplace modules (from net/ and ai/) */
 extern hal_status_t dhcp_discover(uint32_t *ip, uint32_t *gateway, uint32_t *dns);
+extern void tcp_init(uint32_t local_ip, uint32_t gateway, uint32_t netmask);
+extern void marketplace_set_gateway(uint32_t gateway_ip);
 extern hal_status_t marketplace_connect(void);
 extern hal_status_t marketplace_send_manifest(const hardware_manifest_t *m);
 extern hal_status_t marketplace_get_driver(uint16_t vendor, uint16_t device,
@@ -142,6 +144,11 @@ hal_status_t ai_bootstrap(hal_device_t *devices, uint32_t count)
     hal_console_printf("[bootstrap] IP: %u.%u.%u.%u\n",
                        (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
                        (ip >> 8) & 0xFF, ip & 0xFF);
+
+    /* Initialize TCP stack and marketplace with DHCP results */
+    tcp_init(ip, gateway, 0xFFFFFF00); /* /24 netmask */
+    marketplace_set_gateway(gateway);
+
     g_state = BOOTSTRAP_NET_UP;
 
     /* Step 4: Connect to marketplace */

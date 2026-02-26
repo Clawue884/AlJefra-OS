@@ -1084,209 +1084,205 @@ static void ge_tobytes(uint8_t s[32], const ge_p3 *h)
  * Input: 64-byte little-endian integer from SHA-512 output.
  * Output: 32-byte little-endian integer in [0, L).
  *
- * We use Barrett reduction with precomputed constants.
- * For simplicity, we implement schoolbook reduction with the
- * specific structure of L.
+ * Based on the SUPERCOP ref10 sc_reduce algorithm: load into 24 x 21-bit
+ * signed limbs, then eliminate high limbs using the identity
+ * 2^252 = -c (mod L), where c has 21-bit signed representation
+ * {-666643, -470296, -654183, +997805, -136657, +683901}.
  */
 
-/* Helper: load a little-endian 64-bit value from bytes */
-static uint64_t load_le64(const uint8_t *p)
+/* Helper: load 3 bytes little-endian */
+static uint64_t sc_load3(const uint8_t *p)
 {
-    uint64_t r = 0;
-    for (int i = 0; i < 8; i++)
-        r |= (uint64_t)p[i] << (i * 8);
-    return r;
+    return (uint64_t)p[0] | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16);
 }
 
-/* Reduce 64-byte scalar mod L using schoolbook long division.
- * Uses 24x21-bit limbs for the 512-bit input to avoid overflow in
- * intermediate computations. This follows the ref10 approach. */
+/* Helper: load 4 bytes little-endian */
+static uint64_t sc_load4(const uint8_t *p)
+{
+    return (uint64_t)p[0] | ((uint64_t)p[1] << 8) |
+           ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 24);
+}
+
 static void sc_reduce(uint8_t out[32], const uint8_t in[64])
 {
-    /* Load into 24 limbs of 21 bits each (covers 504 bits, enough for 512) */
-    int64_t s[24];
+    /* Load 64 bytes into 24 x 21-bit limbs (ref10 layout) */
+    int64_t s0  = (int64_t)(2097151 & sc_load3(in +  0));
+    int64_t s1  = (int64_t)(2097151 & (sc_load4(in +  2) >>  5));
+    int64_t s2  = (int64_t)(2097151 & (sc_load3(in +  5) >>  2));
+    int64_t s3  = (int64_t)(2097151 & (sc_load4(in +  7) >>  7));
+    int64_t s4  = (int64_t)(2097151 & (sc_load4(in + 10) >>  4));
+    int64_t s5  = (int64_t)(2097151 & (sc_load3(in + 13) >>  1));
+    int64_t s6  = (int64_t)(2097151 & (sc_load4(in + 15) >>  6));
+    int64_t s7  = (int64_t)(2097151 & (sc_load3(in + 18) >>  3));
+    int64_t s8  = (int64_t)(2097151 & sc_load3(in + 21));
+    int64_t s9  = (int64_t)(2097151 & (sc_load4(in + 23) >>  5));
+    int64_t s10 = (int64_t)(2097151 & (sc_load3(in + 26) >>  2));
+    int64_t s11 = (int64_t)(2097151 & (sc_load4(in + 28) >>  7));
+    int64_t s12 = (int64_t)(2097151 & (sc_load4(in + 31) >>  4));
+    int64_t s13 = (int64_t)(2097151 & (sc_load3(in + 34) >>  1));
+    int64_t s14 = (int64_t)(2097151 & (sc_load4(in + 36) >>  6));
+    int64_t s15 = (int64_t)(2097151 & (sc_load3(in + 39) >>  3));
+    int64_t s16 = (int64_t)(2097151 & sc_load3(in + 42));
+    int64_t s17 = (int64_t)(2097151 & (sc_load4(in + 44) >>  5));
+    int64_t s18 = (int64_t)(2097151 & (sc_load3(in + 47) >>  2));
+    int64_t s19 = (int64_t)(2097151 & (sc_load4(in + 49) >>  7));
+    int64_t s20 = (int64_t)(2097151 & (sc_load4(in + 52) >>  4));
+    int64_t s21 = (int64_t)(2097151 & (sc_load3(in + 55) >>  1));
+    int64_t s22 = (int64_t)(2097151 & (sc_load4(in + 57) >>  6));
+    int64_t s23 = (int64_t)(sc_load4(in + 60) >>  3);
 
-    s[ 0] =  (int64_t)(in[ 0])        | ((int64_t)(in[ 1]) <<  8) | ((int64_t)(in[ 2] & 0x1F) << 16);
-    s[ 1] = ((int64_t)(in[ 2]) >>  5) | ((int64_t)(in[ 3]) <<  3) | ((int64_t)(in[ 4]) << 11) | ((int64_t)(in[ 5] & 0x03) << 19);
-    s[ 2] = ((int64_t)(in[ 5]) >>  2) | ((int64_t)(in[ 6]) <<  6) | ((int64_t)(in[ 7] & 0x7F) << 14);
-    s[ 3] = ((int64_t)(in[ 7]) >>  7) | ((int64_t)(in[ 8]) <<  1) | ((int64_t)(in[ 9]) <<  9) | ((int64_t)(in[10] & 0x0F) << 17);
-    s[ 4] = ((int64_t)(in[10]) >>  4) | ((int64_t)(in[11]) <<  4) | ((int64_t)(in[12]) << 12) | ((int64_t)(in[13] & 0x01) << 20);
-    s[ 5] = ((int64_t)(in[13]) >>  1) | ((int64_t)(in[14]) <<  7) | ((int64_t)(in[15] & 0x3F) << 15);
-    s[ 6] = ((int64_t)(in[15]) >>  6) | ((int64_t)(in[16]) <<  2) | ((int64_t)(in[17]) << 10) | ((int64_t)(in[18] & 0x07) << 18);
-    s[ 7] = ((int64_t)(in[18]) >>  3) | ((int64_t)(in[19]) <<  5) | ((int64_t)(in[20]) << 13);
-    s[ 8] = ((int64_t)(in[21]))       | ((int64_t)(in[22]) <<  8) | ((int64_t)(in[23] & 0x1F) << 16);
-    s[ 9] = ((int64_t)(in[23]) >>  5) | ((int64_t)(in[24]) <<  3) | ((int64_t)(in[25]) << 11) | ((int64_t)(in[26] & 0x03) << 19);
-    s[10] = ((int64_t)(in[26]) >>  2) | ((int64_t)(in[27]) <<  6) | ((int64_t)(in[28] & 0x7F) << 14);
-    s[11] = ((int64_t)(in[28]) >>  7) | ((int64_t)(in[29]) <<  1) | ((int64_t)(in[30]) <<  9) | ((int64_t)(in[31] & 0x0F) << 17);
+    int64_t carry0, carry1, carry2, carry3, carry4, carry5;
+    int64_t carry6, carry7, carry8, carry9, carry10, carry11;
+    int64_t carry12, carry13, carry14, carry15, carry16;
 
-    s[12] = ((int64_t)(in[31]) >>  4) | ((int64_t)(in[32]) <<  4) | ((int64_t)(in[33]) << 12) | ((int64_t)(in[34] & 0x01) << 20);
-    s[13] = ((int64_t)(in[34]) >>  1) | ((int64_t)(in[35]) <<  7) | ((int64_t)(in[36] & 0x3F) << 15);
-    s[14] = ((int64_t)(in[36]) >>  6) | ((int64_t)(in[37]) <<  2) | ((int64_t)(in[38]) << 10) | ((int64_t)(in[39] & 0x07) << 18);
-    s[15] = ((int64_t)(in[39]) >>  3) | ((int64_t)(in[40]) <<  5) | ((int64_t)(in[41]) << 13);
-    s[16] = ((int64_t)(in[42]))       | ((int64_t)(in[43]) <<  8) | ((int64_t)(in[44] & 0x1F) << 16);
-    s[17] = ((int64_t)(in[44]) >>  5) | ((int64_t)(in[45]) <<  3) | ((int64_t)(in[46]) << 11) | ((int64_t)(in[47] & 0x03) << 19);
-    s[18] = ((int64_t)(in[47]) >>  2) | ((int64_t)(in[48]) <<  6) | ((int64_t)(in[49] & 0x7F) << 14);
-    s[19] = ((int64_t)(in[49]) >>  7) | ((int64_t)(in[50]) <<  1) | ((int64_t)(in[51]) <<  9) | ((int64_t)(in[52] & 0x0F) << 17);
-    s[20] = ((int64_t)(in[52]) >>  4) | ((int64_t)(in[53]) <<  4) | ((int64_t)(in[54]) << 12) | ((int64_t)(in[55] & 0x01) << 20);
-    s[21] = ((int64_t)(in[55]) >>  1) | ((int64_t)(in[56]) <<  7) | ((int64_t)(in[57] & 0x3F) << 15);
-    s[22] = ((int64_t)(in[57]) >>  6) | ((int64_t)(in[58]) <<  2) | ((int64_t)(in[59]) << 10) | ((int64_t)(in[60] & 0x07) << 18);
-    s[23] = ((int64_t)(in[60]) >>  3) | ((int64_t)(in[61]) <<  5) | ((int64_t)(in[62]) << 13);
+    /* Phase 1: eliminate s23..s18 */
+    s11 += s23 * 666643; s12 += s23 * 470296;
+    s13 += s23 * 654183; s14 -= s23 * 997805;
+    s15 += s23 * 136657; s16 -= s23 * 683901; s23 = 0;
 
-    /* L in 21-bit limbs:
-     * L = 2^252 + c0 + c1*2^21 + ... + c11*2^231 + 2^252
-     * Actually: L = 2^252 + l0 + l1*2^21 + ... where the low part is:
-     * 27742317777372353535851937790883648493
-     *
-     * l[0..11] represent the low 252 bits of L, l[12] = 1 (the 2^252 part)
-     *
-     * In 21-bit limbs, L = {
-     *   0x1CF5ED,  -- limb 0
-     *   0x12631A,  -- limb 1
-     *   0x09CF7A2, -- wait, let me compute these from the byte representation
-     * }
-     *
-     * From ed25519_L bytes (little-endian):
-     * ed 0xED = 237
-     * d3 f5 5c 1a 63 12 58 d6 9c f7 a2 de f9 de 14
-     * 00 ... 10
-     *
-     * Let me extract the 21-bit limbs directly:
-     */
-    /* Reduce using the ref10/TweetNaCl method with 21-bit limbs. */
+    s10 += s22 * 666643; s11 += s22 * 470296;
+    s12 += s22 * 654183; s13 -= s22 * 997805;
+    s14 += s22 * 136657; s15 -= s22 * 683901; s22 = 0;
 
-    /* TweetNaCl-style reduction: reduce from high limbs down.
-     * L = 2^252 + m where m = 27742317777372353535851937790883648493
-     * So 2^252 = -m (mod L).
-     * For each high limb s[i] (i >= 12), we substitute s[i] * 2^(21*i)
-     * by -s[i] * m * 2^(21*(i-12)) (mod L).
-     * The low part of L (m) in 21-bit limbs: */
-    static const int64_t m[12] = {
-        666643, 470296, 654183, -997805, 136657, -683564,
-        /* limbs 6..11 are 0 since m < 2^126 */
-        0, 0, 0, 0, 0, 0
-    };
-    /* Wait, that's the TweetNaCl / SUPERCOP approach. Let me verify:
-     * L = 2^252 + 27742317777372353535851937790883648493
-     * The low 128 bits: 27742317777372353535851937790883648493
-     * = 0x14DEF9DEA2F79CD65812631A5CF5D3ED
-     *
-     * In TweetNaCl, the reduction constants are:
-     * mu = {0x1B25, 0xD3ED, 0x5CF5, 0x631A, 0x1258, 0x9CD6, ...}
-     * Actually, they use a different limb size.
-     *
-     * Let me use the classic ref10 sc_reduce approach which uses
-     * the following identity:
-     * 2^252 mod L = -27742317777372353535851937790883648493
-     *
-     * And the reduction constants for 21-bit limbs are stored as:
-     * When eliminating limb s[i] (for i = 23 down to 12):
-     *   s[i-12] -= s[i] * 666643
-     *   s[i-11] -= s[i] * 470296
-     *   s[i-10] -= s[i] * 654183
-     *   s[i-9]  += s[i] * 997805
-     *   s[i-8]  -= s[i] * 136657
-     *   s[i-7]  += s[i] * 683564
-     *   s[i] = 0
-     * (Signs depend on the actual factorization of m into 21-bit pieces.)
-     */
+    s9  += s21 * 666643; s10 += s21 * 470296;
+    s11 += s21 * 654183; s12 -= s21 * 997805;
+    s13 += s21 * 136657; s14 -= s21 * 683901; s21 = 0;
 
-    /* These constants come from representing -m (mod 2^(21*12)) in 21-bit signed limbs.
-     * m = 27742317777372353535851937790883648493
-     *
-     * The ref10 sc_reduce uses these exact constants.
-     * -m mod L is represented as adjustments to the lower limbs.
-     * For each high limb at position i (23 down to 12):
-     */
+    s8  += s20 * 666643; s9  += s20 * 470296;
+    s10 += s20 * 654183; s11 -= s20 * 997805;
+    s12 += s20 * 136657; s13 -= s20 * 683901; s20 = 0;
 
-    int64_t carry;
+    s7  += s19 * 666643; s8  += s19 * 470296;
+    s9  += s19 * 654183; s10 -= s19 * 997805;
+    s11 += s19 * 136657; s12 -= s19 * 683901; s19 = 0;
 
-    /* Reduce limbs 23 down to 12 */
-    for (int i = 23; i >= 12; i--) {
-        int j = i - 12;
-        s[j +  0] += s[i] *  666643;
-        s[j +  1] += s[i] *  470296;
-        s[j +  2] += s[i] *  654183;
-        s[j +  3] -= s[i] *  997805;
-        s[j +  4] += s[i] *  136657;
-        s[j +  5] -= s[i] *  683564;
-        s[i] = 0;
-    }
+    s6  += s18 * 666643; s7  += s18 * 470296;
+    s8  += s18 * 654183; s9  -= s18 * 997805;
+    s10 += s18 * 136657; s11 -= s18 * 683901; s18 = 0;
 
-    /* Carry propagation */
-    for (int i = 0; i < 12; i++) {
-        carry = (s[i] + (1 << 20)) >> 21;
-        s[i + 1] += carry;
-        s[i] -= carry << 21;
-    }
+    /* Carry-propagate (even then odd) to keep limbs bounded */
+    carry6  = (s6  + (1 << 20)) >> 21; s7  += carry6;  s6  -= carry6  << 21;
+    carry8  = (s8  + (1 << 20)) >> 21; s9  += carry8;  s8  -= carry8  << 21;
+    carry10 = (s10 + (1 << 20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
+    carry12 = (s12 + (1 << 20)) >> 21; s13 += carry12; s12 -= carry12 << 21;
+    carry14 = (s14 + (1 << 20)) >> 21; s15 += carry14; s14 -= carry14 << 21;
+    carry16 = (s16 + (1 << 20)) >> 21; s17 += carry16; s16 -= carry16 << 21;
 
-    /* s[12] may be nonzero; reduce again */
-    s[ 0] += s[12] *  666643;
-    s[ 1] += s[12] *  470296;
-    s[ 2] += s[12] *  654183;
-    s[ 3] -= s[12] *  997805;
-    s[ 4] += s[12] *  136657;
-    s[ 5] -= s[12] *  683564;
-    s[12] = 0;
+    carry7  = (s7  + (1 << 20)) >> 21; s8  += carry7;  s7  -= carry7  << 21;
+    carry9  = (s9  + (1 << 20)) >> 21; s10 += carry9;  s9  -= carry9  << 21;
+    carry11 = (s11 + (1 << 20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
+    carry13 = (s13 + (1 << 20)) >> 21; s14 += carry13; s13 -= carry13 << 21;
+    carry15 = (s15 + (1 << 20)) >> 21; s16 += carry15; s15 -= carry15 << 21;
 
-    /* Carry again */
-    for (int i = 0; i < 12; i++) {
-        carry = (s[i] + (1 << 20)) >> 21;
-        s[i + 1] += carry;
-        s[i] -= carry << 21;
-    }
+    /* Phase 2: eliminate s17..s12 */
+    s5  += s17 * 666643; s6  += s17 * 470296;
+    s7  += s17 * 654183; s8  -= s17 * 997805;
+    s9  += s17 * 136657; s10 -= s17 * 683901; s17 = 0;
 
-    /* Reduce s[12] one more time if needed */
-    s[ 0] += s[12] *  666643;
-    s[ 1] += s[12] *  470296;
-    s[ 2] += s[12] *  654183;
-    s[ 3] -= s[12] *  997805;
-    s[ 4] += s[12] *  136657;
-    s[ 5] -= s[12] *  683564;
-    s[12] = 0;
+    s4  += s16 * 666643; s5  += s16 * 470296;
+    s6  += s16 * 654183; s7  -= s16 * 997805;
+    s8  += s16 * 136657; s9  -= s16 * 683901; s16 = 0;
 
-    /* Final carry */
-    for (int i = 0; i < 12; i++) {
-        carry = s[i] >> 21;
-        s[i + 1] += carry;
-        s[i] &= (1 << 21) - 1;
-    }
+    s3  += s15 * 666643; s4  += s15 * 470296;
+    s5  += s15 * 654183; s6  -= s15 * 997805;
+    s7  += s15 * 136657; s8  -= s15 * 683901; s15 = 0;
 
-    /* Pack into bytes */
-    out[ 0] = (uint8_t)(s[ 0] >>  0);
-    out[ 1] = (uint8_t)(s[ 0] >>  8);
-    out[ 2] = (uint8_t)((s[ 0] >> 16) | (s[ 1] <<  5));
-    out[ 3] = (uint8_t)(s[ 1] >>  3);
-    out[ 4] = (uint8_t)(s[ 1] >> 11);
-    out[ 5] = (uint8_t)((s[ 1] >> 19) | (s[ 2] <<  2));
-    out[ 6] = (uint8_t)(s[ 2] >>  6);
-    out[ 7] = (uint8_t)((s[ 2] >> 14) | (s[ 3] <<  7));
-    out[ 8] = (uint8_t)(s[ 3] >>  1);
-    out[ 9] = (uint8_t)(s[ 3] >>  9);
-    out[10] = (uint8_t)((s[ 3] >> 17) | (s[ 4] <<  4));
-    out[11] = (uint8_t)(s[ 4] >>  4);
-    out[12] = (uint8_t)(s[ 4] >> 12);
-    out[13] = (uint8_t)((s[ 4] >> 20) | (s[ 5] <<  1));
-    out[14] = (uint8_t)(s[ 5] >>  7);
-    out[15] = (uint8_t)((s[ 5] >> 15) | (s[ 6] <<  6));
-    out[16] = (uint8_t)(s[ 6] >>  2);
-    out[17] = (uint8_t)(s[ 6] >> 10);
-    out[18] = (uint8_t)((s[ 6] >> 18) | (s[ 7] <<  3));
-    out[19] = (uint8_t)(s[ 7] >>  5);
-    out[20] = (uint8_t)(s[ 7] >> 13);
-    out[21] = (uint8_t)(s[ 8] >>  0);
-    out[22] = (uint8_t)(s[ 8] >>  8);
-    out[23] = (uint8_t)((s[ 8] >> 16) | (s[ 9] <<  5));
-    out[24] = (uint8_t)(s[ 9] >>  3);
-    out[25] = (uint8_t)(s[ 9] >> 11);
-    out[26] = (uint8_t)((s[ 9] >> 19) | (s[10] <<  2));
-    out[27] = (uint8_t)(s[10] >>  6);
-    out[28] = (uint8_t)((s[10] >> 14) | (s[11] <<  7));
-    out[29] = (uint8_t)(s[11] >>  1);
-    out[30] = (uint8_t)(s[11] >>  9);
-    out[31] = (uint8_t)(s[11] >> 17);
+    s2  += s14 * 666643; s3  += s14 * 470296;
+    s4  += s14 * 654183; s5  -= s14 * 997805;
+    s6  += s14 * 136657; s7  -= s14 * 683901; s14 = 0;
 
-    (void)m;
-    (void)load_le64;
+    s1  += s13 * 666643; s2  += s13 * 470296;
+    s3  += s13 * 654183; s4  -= s13 * 997805;
+    s5  += s13 * 136657; s6  -= s13 * 683901; s13 = 0;
+
+    s0  += s12 * 666643; s1  += s12 * 470296;
+    s2  += s12 * 654183; s3  -= s12 * 997805;
+    s4  += s12 * 136657; s5  -= s12 * 683901; s12 = 0;
+
+    /* Carry-propagate s0..s11 (even then odd) */
+    carry0  = (s0  + (1 << 20)) >> 21; s1  += carry0;  s0  -= carry0  << 21;
+    carry2  = (s2  + (1 << 20)) >> 21; s3  += carry2;  s2  -= carry2  << 21;
+    carry4  = (s4  + (1 << 20)) >> 21; s5  += carry4;  s4  -= carry4  << 21;
+    carry6  = (s6  + (1 << 20)) >> 21; s7  += carry6;  s6  -= carry6  << 21;
+    carry8  = (s8  + (1 << 20)) >> 21; s9  += carry8;  s8  -= carry8  << 21;
+    carry10 = (s10 + (1 << 20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
+
+    carry1  = (s1  + (1 << 20)) >> 21; s2  += carry1;  s1  -= carry1  << 21;
+    carry3  = (s3  + (1 << 20)) >> 21; s4  += carry3;  s3  -= carry3  << 21;
+    carry5  = (s5  + (1 << 20)) >> 21; s6  += carry5;  s5  -= carry5  << 21;
+    carry7  = (s7  + (1 << 20)) >> 21; s8  += carry7;  s7  -= carry7  << 21;
+    carry9  = (s9  + (1 << 20)) >> 21; s10 += carry9;  s9  -= carry9  << 21;
+    carry11 = (s11 + (1 << 20)) >> 21; s12 += carry11; s11 -= carry11 << 21;
+
+    /* Reduce s12 overflow back into s0..s5 */
+    s0  += s12 * 666643; s1  += s12 * 470296;
+    s2  += s12 * 654183; s3  -= s12 * 997805;
+    s4  += s12 * 136657; s5  -= s12 * 683901; s12 = 0;
+
+    /* Carry-propagate again (even then odd, with unsigned carry for last pass) */
+    carry0  = (s0  + (1 << 20)) >> 21; s1  += carry0;  s0  -= carry0  << 21;
+    carry2  = (s2  + (1 << 20)) >> 21; s3  += carry2;  s2  -= carry2  << 21;
+    carry4  = (s4  + (1 << 20)) >> 21; s5  += carry4;  s4  -= carry4  << 21;
+    carry6  = (s6  + (1 << 20)) >> 21; s7  += carry6;  s6  -= carry6  << 21;
+    carry8  = (s8  + (1 << 20)) >> 21; s9  += carry8;  s8  -= carry8  << 21;
+    carry10 = (s10 + (1 << 20)) >> 21; s11 += carry10; s10 -= carry10 << 21;
+
+    carry1 = s1  >> 21; s2  += carry1; s1  -= carry1 << 21;
+    carry3 = s3  >> 21; s4  += carry3; s3  -= carry3 << 21;
+    carry5 = s5  >> 21; s6  += carry5; s5  -= carry5 << 21;
+    carry7 = s7  >> 21; s8  += carry7; s7  -= carry7 << 21;
+    carry9 = s9  >> 21; s10 += carry9; s9  -= carry9 << 21;
+    carry11 = s11 >> 21; s12 += carry11; s11 -= carry11 << 21;
+
+    s0  += s12 * 666643; s1  += s12 * 470296;
+    s2  += s12 * 654183; s3  -= s12 * 997805;
+    s4  += s12 * 136657; s5  -= s12 * 683901; s12 = 0;
+
+    carry0 = s0  >> 21; s1  += carry0; s0  -= carry0 << 21;
+    carry1 = s1  >> 21; s2  += carry1; s1  -= carry1 << 21;
+    carry2 = s2  >> 21; s3  += carry2; s2  -= carry2 << 21;
+    carry3 = s3  >> 21; s4  += carry3; s3  -= carry3 << 21;
+    carry4 = s4  >> 21; s5  += carry4; s4  -= carry4 << 21;
+    carry5 = s5  >> 21; s6  += carry5; s5  -= carry5 << 21;
+    carry6 = s6  >> 21; s7  += carry6; s6  -= carry6 << 21;
+    carry7 = s7  >> 21; s8  += carry7; s7  -= carry7 << 21;
+    carry8 = s8  >> 21; s9  += carry8; s8  -= carry8 << 21;
+    carry9 = s9  >> 21; s10 += carry9; s9  -= carry9 << 21;
+    carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
+
+    /* Pack 12 x 21-bit limbs into 32 bytes, little-endian */
+    out[ 0] = (uint8_t)(s0);
+    out[ 1] = (uint8_t)(s0 >>  8);
+    out[ 2] = (uint8_t)((s0 >> 16) | (s1 <<  5));
+    out[ 3] = (uint8_t)(s1 >>  3);
+    out[ 4] = (uint8_t)(s1 >> 11);
+    out[ 5] = (uint8_t)((s1 >> 19) | (s2 <<  2));
+    out[ 6] = (uint8_t)(s2 >>  6);
+    out[ 7] = (uint8_t)((s2 >> 14) | (s3 <<  7));
+    out[ 8] = (uint8_t)(s3 >>  1);
+    out[ 9] = (uint8_t)(s3 >>  9);
+    out[10] = (uint8_t)((s3 >> 17) | (s4 <<  4));
+    out[11] = (uint8_t)(s4 >>  4);
+    out[12] = (uint8_t)(s4 >> 12);
+    out[13] = (uint8_t)((s4 >> 20) | (s5 <<  1));
+    out[14] = (uint8_t)(s5 >>  7);
+    out[15] = (uint8_t)((s5 >> 15) | (s6 <<  6));
+    out[16] = (uint8_t)(s6 >>  2);
+    out[17] = (uint8_t)(s6 >> 10);
+    out[18] = (uint8_t)((s6 >> 18) | (s7 <<  3));
+    out[19] = (uint8_t)(s7 >>  5);
+    out[20] = (uint8_t)(s7 >> 13);
+    out[21] = (uint8_t)(s8);
+    out[22] = (uint8_t)(s8 >>  8);
+    out[23] = (uint8_t)((s8 >> 16) | (s9 <<  5));
+    out[24] = (uint8_t)(s9 >>  3);
+    out[25] = (uint8_t)(s9 >> 11);
+    out[26] = (uint8_t)((s9 >> 19) | (s10 <<  2));
+    out[27] = (uint8_t)(s10 >>  6);
+    out[28] = (uint8_t)((s10 >> 14) | (s11 <<  7));
+    out[29] = (uint8_t)(s11 >>  1);
+    out[30] = (uint8_t)(s11 >>  9);
+    out[31] = (uint8_t)(s11 >> 17);
 }
 
 /* ── Double-scalar multiplication: [a]B + [b]P ── */
