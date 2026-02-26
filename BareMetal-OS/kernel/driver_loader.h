@@ -42,6 +42,34 @@ typedef struct {
     int             (*input_poll)(void); /* Returns keycode or -1 */
 } driver_ops_t;
 
+/* Kernel API vtable — passed to runtime-loaded drivers so they can
+ * access HAL services without linking to kernel symbols directly. */
+typedef struct {
+    /* Console */
+    void (*puts)(const char *s);
+
+    /* MMIO */
+    uint32_t (*mmio_read32)(volatile void *addr);
+    void     (*mmio_write32)(volatile void *addr, uint32_t val);
+    uint8_t  (*mmio_read8)(volatile void *addr);
+    void     (*mmio_write8)(volatile void *addr, uint8_t val);
+    void     (*mmio_barrier)(void);
+
+    /* DMA */
+    void *(*dma_alloc)(uint64_t size, uint64_t *phys);
+    void  (*dma_free)(void *ptr, uint64_t size);
+
+    /* Timer */
+    void     (*delay_us)(uint64_t us);
+    uint64_t (*timer_ms)(void);
+
+    /* Bus / PCI */
+    void          (*pci_enable)(hal_device_t *dev);
+    volatile void *(*map_bar)(hal_device_t *dev, uint32_t idx);
+    uint32_t      (*pci_read32)(uint32_t bdf, uint32_t reg);
+    void          (*pci_write32)(uint32_t bdf, uint32_t reg, uint32_t val);
+} kernel_api_t;
+
 /* Maximum loaded drivers */
 #define MAX_DRIVERS  32
 

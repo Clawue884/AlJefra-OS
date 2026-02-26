@@ -38,7 +38,30 @@
 #define SDHCI_CAPABILITIES    0x40    /* Capabilities (32-bit) */
 #define SDHCI_CAPABILITIES2   0x44    /* Capabilities 2 (32-bit) */
 #define SDHCI_MAX_CURRENT     0x48    /* Max Current Capabilities */
+#define SDHCI_AUTO_CMD_STATUS 0x3C    /* Auto CMD Error Status */
+#define SDHCI_HOST_CONTROL2   0x3E    /* Host Control 2 (16-bit) */
 #define SDHCI_HOST_VERSION    0xFE    /* Host Controller Version */
+
+/* ── Host Control 2 bits ── */
+#define SDHCI_HC2_UHS_MASK    0x0007  /* UHS Mode Select */
+#define SDHCI_HC2_SDR12       0x0000
+#define SDHCI_HC2_SDR25       0x0001
+#define SDHCI_HC2_SDR50       0x0002
+#define SDHCI_HC2_SDR104      0x0003
+#define SDHCI_HC2_DDR50       0x0004
+#define SDHCI_HC2_1V8_SIG     (1u << 3)   /* 1.8V Signaling Enable */
+#define SDHCI_HC2_EXEC_TUNING (1u << 6)   /* Execute Tuning */
+#define SDHCI_HC2_TUNED_CLK   (1u << 7)   /* Sampling Clock Select */
+
+/* ── Capabilities 2 bits ── */
+#define SDHCI_CAP2_SDR50      (1u << 0)
+#define SDHCI_CAP2_SDR104     (1u << 1)
+#define SDHCI_CAP2_DDR50      (1u << 2)
+#define SDHCI_CAP2_DRV_TYPE_A (1u << 4)
+#define SDHCI_CAP2_DRV_TYPE_C (1u << 5)
+#define SDHCI_CAP2_DRV_TYPE_D (1u << 6)
+#define SDHCI_CAP2_TUNING_SDR50 (1u << 13)
+#define SDHCI_CAP2_USE_TUNING (1u << 14)
 
 /* ── Present State bits ── */
 #define SDHCI_PS_CMD_INHIBIT  (1u << 0)     /* Command Inhibit (CMD) */
@@ -98,12 +121,26 @@
 #define SD_CMD_WRITE_SINGLE   24      /* CMD24: Write Single Block */
 #define SD_CMD_WRITE_MULTI    25      /* CMD25: Write Multiple Block */
 #define SD_CMD_APP_CMD        55      /* CMD55: App command prefix */
+#define SD_CMD_SWITCH_FUNC    6       /* CMD6: Switch Function */
 #define SD_ACMD_SET_BUS_WIDTH 6       /* ACMD6: Set Bus Width */
+#define SD_ACMD_SD_STATUS     13      /* ACMD13: SD Status */
 #define SD_ACMD_SD_SEND_OP    41      /* ACMD41: SD_SEND_OP_COND */
+#define SD_ACMD_SEND_SCR      51      /* ACMD51: Send SCR */
+
+/* ── SD Switch Function group 1 (Access Mode) values ── */
+#define SD_SWITCH_CHECK       0       /* Check function */
+#define SD_SWITCH_SET         1       /* Set function */
+#define SD_ACCESS_MODE_DS     0       /* Default Speed (12.5MB/s) */
+#define SD_ACCESS_MODE_HS     1       /* High Speed (25MB/s) */
+#define SD_ACCESS_MODE_SDR50  2       /* SDR50 (50MB/s) */
+#define SD_ACCESS_MODE_SDR104 3       /* SDR104 (104MB/s) */
+#define SD_ACCESS_MODE_DDR50  4       /* DDR50 (50MB/s) */
 
 /* ── OCR register bits ── */
 #define SD_OCR_HCS            (1u << 30)    /* Host Capacity Support (SDHC/SDXC) */
 #define SD_OCR_BUSY           (1u << 31)    /* Card power-up status (busy if 0) */
+#define SD_OCR_S18R           (1u << 24)    /* Switching to 1.8V request */
+#define SD_OCR_S18A           (1u << 24)    /* Switching to 1.8V accepted (in response) */
 #define SD_OCR_3V3            (1u << 20)    /* 3.2-3.3V */
 #define SD_OCR_3V2            (1u << 19)    /* 3.1-3.2V */
 
@@ -128,11 +165,23 @@ typedef struct {
     uint32_t       csd[4];      /* Card Specific Data register */
 } sd_card_t;
 
+/* ── Speed modes (reported after tuning) ── */
+typedef enum {
+    SD_SPEED_DEFAULT  = 0,   /* Default Speed: 25MHz max */
+    SD_SPEED_HIGH     = 1,   /* High Speed: 50MHz max */
+    SD_SPEED_SDR50    = 2,   /* SDR50: 100MHz max (1.8V) */
+    SD_SPEED_SDR104   = 3,   /* SDR104: 208MHz max (1.8V) */
+    SD_SPEED_DDR50    = 4,   /* DDR50: 50MHz DDR (1.8V) */
+} sd_speed_mode_t;
+
 /* ── SDHCI controller state ── */
 typedef struct {
     volatile void  *regs;       /* SDHCI register base (MMIO) */
     sd_card_t       card;       /* Detected card */
     uint32_t        base_clock; /* Base clock in Hz (from capabilities) */
+    uint32_t        caps2;      /* Capabilities register 2 */
+    sd_speed_mode_t speed_mode; /* Current speed mode */
+    bool            uhs_support;/* Controller supports UHS-I modes */
     bool            initialized;
 } sdhci_dev_t;
 
@@ -155,5 +204,9 @@ hal_status_t emmc_write(sdhci_dev_t *dev, uint64_t block, uint32_t count,
 
 /* Get card info */
 hal_status_t emmc_get_card_info(sdhci_dev_t *dev, sd_card_t *info);
+
+/* Tune card to highest supported speed mode.
+ * Call after emmc_init/emmc_init_pci. Tries HS → SDR50 → DDR50. */
+hal_status_t emmc_tune_speed(sdhci_dev_t *dev);
 
 #endif /* ALJEFRA_DRV_EMMC_H */

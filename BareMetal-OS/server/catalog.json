@@ -25,6 +25,30 @@
       "download_url": "/v1/drivers/1234/1111/x86_64"
     },
     {
+      "name": "qemu_vga",
+      "version": "1.0.0",
+      "vendor_id": "0x1234",
+      "device_id": "0x1111",
+      "arch": "riscv64",
+      "category": "display",
+      "size_bytes": 169,
+      "sha256": "fdfb6bc63e7673b9d9dbad52ccaab2a5b6614011bbfa2456873a8ed1ad543212",
+      "description": "QEMU VGA display driver",
+      "download_url": "/v1/drivers/1234/1111/riscv64"
+    },
+    {
+      "name": "qemu_vga",
+      "version": "1.0.0",
+      "vendor_id": "0x1234",
+      "device_id": "0x1111",
+      "arch": "aarch64",
+      "category": "display",
+      "size_bytes": 169,
+      "sha256": "9548562f3a73b0631c772f79c00f90ffd6b83cad75b80735ebcadf4ddef8eb4c",
+      "description": "QEMU VGA display driver",
+      "download_url": "/v1/drivers/1234/1111/aarch64"
+    },
+    {
       "name": "virtio_blk",
       "version": "1.0.0",
       "vendor_id": "0x1af4",
@@ -97,5 +121,5 @@
       "download_url": "/v1/drivers/1af4/1000/riscv64"
     }
   ],
-  "total": 8
+  "total": 10
 }

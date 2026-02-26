@@ -5,11 +5,6 @@
 
 #include "../../hal/hal.h"
 
-/* BareMetal kernel API */
-extern uint64_t b_system(uint64_t function, uint64_t var1, uint64_t var2);
-
-/* b_system function codes */
-#define SYS_FREE_MEMORY  0x01
 
 /* -------------------------------------------------------------------------- */
 /* Port I/O — x86-64 IN/OUT instructions                                     */

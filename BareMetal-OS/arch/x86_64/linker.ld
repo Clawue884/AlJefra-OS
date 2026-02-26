@@ -1,27 +1,39 @@
 /* SPDX-License-Identifier: MIT */
-/* AlJefra OS — x86-64 Linker Script
+/* AlJefra OS — x86-64 Linker Script (Multiboot1 Standalone)
  *
- * The kernel payload is concatenated to the BareMetal kernel binary.
- * During boot, init_sys copies it to physical address 0x1E0000 and the
- * BSP executes it via the SMP work queue (call 0x1E0000).
- *
- * Output is a flat binary (objcopy -O binary produces the raw code).
+ * Kernel is loaded by QEMU/GRUB multiboot at 1MB physical.
+ * boot.S transitions to 64-bit long mode with identity-mapped 4GB.
+ * BSS is zeroed by start.c, then hal_init() → kernel_main().
  */
 
 OUTPUT_FORMAT("elf64-x86-64")
 OUTPUT_ARCH(i386:x86-64)
-ENTRY(_start)
+ENTRY(_boot32)
 
-PAYLOAD_BASE = 0x1000000;  /* 16MB — loaded here by boot loader stub */
+KERNEL_BASE = 0x100000;  /* 1MB — standard multiboot load address */
 
 SECTIONS
 {
-    . = PAYLOAD_BASE;
+    . = KERNEL_BASE;
+
+    _kernel_start = .;
+
+    /* ---- Multiboot1 header (must be in first 8KB) ---- */
+    .multiboot ALIGN(4) :
+    {
+        *(.multiboot)
+    }
+
+    /* ---- 32-bit boot code ---- */
+    .text.boot32 ALIGN(16) :
+    {
+        *(.text.boot32)
+    }
 
     /* ---- Code ---- */
     .text ALIGN(16) :
     {
-        *(.text.entry)      /* Entry point first */
+        *(.text.entry)      /* C _start entry point */
         *(.text .text.*)
     }
 
@@ -41,7 +53,10 @@ SECTIONS
     .data ALIGN(16) :
     {
         *(.data .data.*)
+        *(.data.boot)
     }
+
+    _load_end = .;  /* End of file-backed data (for multiboot load_end_addr) */
 
     /* ---- Zero-initialized data ---- */
     . = ALIGN(16);

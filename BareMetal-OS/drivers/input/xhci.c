@@ -173,17 +173,28 @@ static hal_status_t xhci_send_command(xhci_controller_t *hc, xhci_trb_t *cmd,
     /* Ring doorbell 0 (host controller) with target 0 (command ring) */
     xhci_ring_doorbell(hc, 0, 0);
 
-    /* Wait for Command Completion Event */
-    hal_status_t st = xhci_poll_event(hc, result, XHCI_TIMEOUT_MS);
-    if (st != HAL_OK)
-        return st;
+    /* Wait for Command Completion Event — skip other event types
+     * (e.g., Port Status Change events from port reset) */
+    uint64_t deadline = hal_timer_ms() + XHCI_TIMEOUT_MS;
+    while (hal_timer_ms() < deadline) {
+        hal_status_t st = xhci_poll_event(hc, result, XHCI_TIMEOUT_MS);
+        if (st != HAL_OK)
+            return st;
 
-    /* Check completion code */
-    uint8_t cc = (result->status >> 24) & 0xFF;
-    if (cc != XHCI_CC_SUCCESS)
-        return HAL_ERROR;
+        uint8_t trb_type = XHCI_TRB_GET_TYPE(result->control);
+        if (trb_type == XHCI_TRB_CMD_COMPLETE) {
+            /* Check completion code */
+            uint8_t cc = (result->status >> 24) & 0xFF;
+            if (cc != XHCI_CC_SUCCESS) {
+                hal_console_printf("[xhci] Command failed: cc=%u\n", cc);
+                return HAL_ERROR;
+            }
+            return HAL_OK;
+        }
+        /* Skip non-command events (Port Status Change, etc.) */
+    }
 
-    return HAL_OK;
+    return HAL_TIMEOUT;
 }
 
 /* ── Transfer Ring helpers ── */
@@ -767,6 +778,42 @@ hal_status_t xhci_configure_interrupt_ep(xhci_controller_t *hc, uint8_t slot_id,
     return st;
 }
 
+/* ── Port enumeration — scan all ports for connected devices ── */
+
+hal_status_t xhci_enumerate_ports(xhci_controller_t *hc)
+{
+    if (!hc->initialized)
+        return HAL_ERROR;
+
+    uint8_t found = 0;
+    for (uint8_t port = 1; port <= hc->max_ports; port++) {
+        uint32_t portsc = xhci_read_portsc(hc, port);
+        if (!(portsc & XHCI_PORTSC_CCS))
+            continue;
+
+        hal_console_printf("[xhci] Port %u: device connected (speed=%u)\n",
+                           port, (portsc & XHCI_PORTSC_SPEED_MASK) >> 10);
+
+        uint8_t slot_id = xhci_port_reset(hc, port);
+        if (slot_id == 0) {
+            hal_console_printf("[xhci] Port %u: reset/address failed\n", port);
+            continue;
+        }
+
+        /* Address device */
+        hal_status_t st = xhci_address_device(hc, slot_id);
+        if (st != HAL_OK) {
+            hal_console_printf("[xhci] Slot %u: address failed\n", slot_id);
+            continue;
+        }
+
+        hal_console_printf("[xhci] Port %u: slot %u assigned\n", port, slot_id);
+        found++;
+    }
+
+    return found > 0 ? HAL_OK : HAL_NO_DEVICE;
+}
+
 hal_status_t xhci_poll_interrupt(xhci_controller_t *hc, uint8_t slot_id,
                                   void *buf, uint16_t *length)
 {
@@ -820,4 +867,88 @@ hal_status_t xhci_poll_interrupt(xhci_controller_t *hc, uint8_t slot_id,
 
     hal_dma_free(recv_buf, 64);
     return HAL_ERROR;
+}
+
+/* ── driver_ops_t wrapper for built-in driver registration ── */
+#include "usb_hid.h"
+#include "../../kernel/driver_loader.h"
+
+static xhci_controller_t g_xhci_ctrl;
+static usb_hid_dev_t     g_usb_kbd;
+static bool              g_kbd_found;
+
+static hal_status_t xhci_drv_init(hal_device_t *dev)
+{
+    g_kbd_found = false;
+
+    hal_status_t st = xhci_init(&g_xhci_ctrl, dev);
+    if (st != HAL_OK)
+        return st;
+
+    hal_console_printf("[xhci] Controller ready: %u slots, %u ports\n",
+                       g_xhci_ctrl.max_slots, g_xhci_ctrl.max_ports);
+
+    /* Enumerate ports and address devices */
+    xhci_enumerate_ports(&g_xhci_ctrl);
+
+    /* Look for a HID keyboard among addressed slots */
+    for (uint8_t i = 0; i < g_xhci_ctrl.max_slots; i++) {
+        if (!g_xhci_ctrl.slots[i].active)
+            continue;
+
+        uint8_t slot_id = g_xhci_ctrl.slots[i].slot_id;
+        hal_status_t hid_rc = usb_hid_init(&g_usb_kbd, &g_xhci_ctrl, slot_id);
+        if (hid_rc == HAL_OK && usb_hid_is_keyboard(&g_usb_kbd)) {
+            hal_console_printf("[xhci] USB keyboard found on slot %u\n", slot_id);
+            g_kbd_found = true;
+            break;
+        }
+    }
+
+    if (!g_kbd_found)
+        hal_console_puts("[xhci] No USB keyboard detected\n");
+
+    return HAL_OK;
+}
+
+static void xhci_drv_shutdown(void)
+{
+    /* Stop controller */
+    if (g_xhci_ctrl.initialized) {
+        uint32_t cmd = xhci_op_read32(&g_xhci_ctrl, XHCI_OP_USBCMD);
+        cmd &= ~XHCI_CMD_RUN;
+        xhci_op_write32(&g_xhci_ctrl, XHCI_OP_USBCMD, cmd);
+    }
+}
+
+static int xhci_drv_input_poll(void)
+{
+    if (!g_kbd_found)
+        return -1;
+
+    /* Poll xHCI for new HID reports */
+    usb_hid_poll(&g_usb_kbd);
+
+    /* Check for a key event */
+    hid_key_event_t evt;
+    if (usb_hid_get_key(&g_usb_kbd, &evt)) {
+        if (evt.pressed && evt.ascii)
+            return (int)evt.ascii;
+        if (evt.pressed)
+            return (int)evt.keycode | 0x100;  /* Non-ASCII: high bit set */
+    }
+    return -1;
+}
+
+static const driver_ops_t xhci_driver_ops = {
+    .name       = "xhci",
+    .category   = DRIVER_CAT_INPUT,
+    .init       = xhci_drv_init,
+    .shutdown   = xhci_drv_shutdown,
+    .input_poll = xhci_drv_input_poll,
+};
+
+void xhci_register(void)
+{
+    driver_register_builtin(&xhci_driver_ops);
 }

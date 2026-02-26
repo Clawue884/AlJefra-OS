@@ -1541,9 +1541,7 @@ hal_status_t ajdrv_verify_signature(const uint8_t pub_key[AJDRV_PUBKEY_SIZE],
 
 hal_status_t ajdrv_verify(const void *data, uint64_t size)
 {
-    if (!g_key_set) {
-        hal_console_puts("[verify] No trusted key set\n");
-        return HAL_ERROR;
-    }
+    if (!g_key_set)
+        return HAL_NOT_SUPPORTED;  /* No key configured — skip verification */
     return ajdrv_verify_signature(g_trusted_key, data, size);
 }

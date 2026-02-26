@@ -7,9 +7,9 @@
 #include "../../hal/hal.h"
 #include <stdarg.h>
 
-/* BareMetal kernel API */
-extern void b_output(const char *str, uint64_t nbr);
-extern uint8_t b_input(void);
+/* Stub fallbacks (not needed when serial is available) */
+static void b_output(const char *str, uint64_t nbr) { (void)str; (void)nbr; }
+static uint8_t b_input(void) { return 0; }
 
 /* -------------------------------------------------------------------------- */
 /* Serial port (COM1) constants                                               */

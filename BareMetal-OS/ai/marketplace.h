@@ -70,4 +70,16 @@ hal_status_t marketplace_check_updates(const char *os_version,
 hal_status_t marketplace_get_catalog(marketplace_driver_info_t *drivers,
                                       uint32_t max, uint32_t *count);
 
+/* Report driver metrics to the marketplace for quality tracking */
+hal_status_t marketplace_report_metrics(const char *driver_name,
+                                         const char *version,
+                                         uint32_t uptime_secs,
+                                         uint32_t error_count);
+
+/* Submit an evolved driver variant to the marketplace */
+hal_status_t marketplace_submit_evolution(const char *base_driver,
+                                           const char *description,
+                                           const void *ajdrv_data,
+                                           uint64_t ajdrv_size);
+
 #endif /* ALJEFRA_MARKETPLACE_H */

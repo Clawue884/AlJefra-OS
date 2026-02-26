@@ -72,6 +72,9 @@ def index():
             "driver":   "GET  /v1/drivers/<vendor>/<device>/<arch>",
             "upload":   "POST /v1/drivers",
             "updates":  "GET  /v1/updates/<os_version>",
+            "evolve":   "POST /v1/evolve",
+            "reviews":  "GET/POST /v1/reviews",
+            "metrics":  "POST /v1/metrics",
         },
     })
 
@@ -322,6 +325,219 @@ def check_updates(os_version: str):
         "changelog": "Multi-architecture support, HAL layer, portable drivers" if update_available else "",
         "download_url": f"/v1/updates/{OS_VERSION}/x86_64" if update_available else "",
     })
+
+
+# ── AI Evolution ──
+
+# In-memory evolution log (production would use a database)
+_evolution_log = []
+
+@app.route("/v1/evolve", methods=["POST"])
+def submit_evolution():
+    """Submit an evolved driver variant for evaluation.
+
+    Body (JSON):
+        {
+            "base_driver": "virtio_net",
+            "base_version": "1.0.0",
+            "arch": "x86_64",
+            "optimization_type": "performance|size|reliability",
+            "metrics": {
+                "throughput_mbps": 950,
+                "latency_us": 12,
+                "code_size": 4096,
+                "crash_count": 0
+            },
+            "description": "Optimized TX path: batch descriptors",
+            "author": "claude-evolution-agent"
+        }
+
+    Optionally include a 'file' field with the evolved .ajdrv binary
+    (multipart/form-data).
+
+    Response:
+        { "status": "submitted", "evolution_id": N }
+    """
+    if request.content_type and "json" in request.content_type:
+        body = request.get_json(silent=True) or {}
+        binary = None
+    elif "file" in request.files:
+        binary = request.files["file"].read()
+        meta_json = request.form.get("metadata", "{}")
+        try:
+            body = json.loads(meta_json)
+        except json.JSONDecodeError:
+            body = {}
+    else:
+        return jsonify({"error": "Send JSON or multipart with 'file' + 'metadata'"}), 400
+
+    entry = {
+        "id": len(_evolution_log) + 1,
+        "base_driver": body.get("base_driver", "unknown"),
+        "base_version": body.get("base_version", "0.0.0"),
+        "arch": body.get("arch", "x86_64"),
+        "optimization_type": body.get("optimization_type", "performance"),
+        "metrics": body.get("metrics", {}),
+        "description": body.get("description", ""),
+        "author": body.get("author", "anonymous"),
+        "status": "pending_review",
+        "has_binary": binary is not None,
+    }
+    _evolution_log.append(entry)
+
+    # If binary provided, save it for review
+    if binary:
+        evo_dir = DRIVERS_DIR / "evolved"
+        evo_dir.mkdir(parents=True, exist_ok=True)
+        evo_file = evo_dir / f"evo_{entry['id']}_{entry['base_driver']}.ajdrv"
+        evo_file.write_bytes(binary)
+
+    return jsonify({"status": "submitted", "evolution_id": entry["id"]}), 201
+
+
+@app.route("/v1/evolve", methods=["GET"])
+def list_evolutions():
+    """List submitted evolution entries.
+
+    Query params:
+        driver  -- filter by base driver name
+        status  -- filter by status (pending_review, approved, rejected)
+
+    Response:
+        { "evolutions": [...], "total": N }
+    """
+    driver = request.args.get("driver")
+    status_filter = request.args.get("status")
+
+    results = _evolution_log
+    if driver:
+        results = [e for e in results if e["base_driver"] == driver]
+    if status_filter:
+        results = [e for e in results if e["status"] == status_filter]
+
+    return jsonify({"evolutions": results, "total": len(results)})
+
+
+# ── Community Audit / Review System ──
+
+# In-memory review log (production would use a database)
+_reviews = []
+
+@app.route("/v1/reviews", methods=["GET"])
+def list_reviews():
+    """List driver reviews and audit entries.
+
+    Query params:
+        driver  -- filter by driver name
+        status  -- filter by status (pending, approved, rejected)
+
+    Response:
+        { "reviews": [...], "total": N }
+    """
+    driver = request.args.get("driver")
+    status_filter = request.args.get("status")
+
+    results = _reviews
+    if driver:
+        results = [r for r in results if r["driver_name"] == driver]
+    if status_filter:
+        results = [r for r in results if r["status"] == status_filter]
+
+    return jsonify({"reviews": results, "total": len(results)})
+
+
+@app.route("/v1/reviews", methods=["POST"])
+def submit_review():
+    """Submit a review for a driver.
+
+    Body (JSON):
+        {
+            "driver_name": "virtio_net",
+            "version": "1.0.0",
+            "arch": "x86_64",
+            "reviewer": "community-auditor-1",
+            "verdict": "approved|rejected|needs_changes",
+            "comments": "Code reviewed, no security issues found.",
+            "stability_score": 95,
+            "security_score": 90,
+            "performance_score": 85
+        }
+
+    Response:
+        { "status": "recorded", "review_id": N }
+    """
+    body = request.get_json(silent=True)
+    if body is None:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    review = {
+        "id": len(_reviews) + 1,
+        "driver_name": body.get("driver_name", "unknown"),
+        "version": body.get("version", "0.0.0"),
+        "arch": body.get("arch", "x86_64"),
+        "reviewer": body.get("reviewer", "anonymous"),
+        "verdict": body.get("verdict", "pending"),
+        "comments": body.get("comments", ""),
+        "stability_score": body.get("stability_score", 0),
+        "security_score": body.get("security_score", 0),
+        "performance_score": body.get("performance_score", 0),
+        "status": body.get("verdict", "pending"),
+    }
+    _reviews.append(review)
+
+    # If driver is approved by enough reviewers, mark it as trusted in catalog
+    driver_reviews = [r for r in _reviews
+                      if r["driver_name"] == review["driver_name"]
+                      and r["version"] == review["version"]
+                      and r["status"] == "approved"]
+
+    approval_count = len(driver_reviews)
+    if approval_count >= 2:
+        # Auto-promote to trusted status (would update catalog in production)
+        pass
+
+    return jsonify({
+        "status": "recorded",
+        "review_id": review["id"],
+        "approval_count": approval_count,
+    }), 201
+
+
+@app.route("/v1/reviews/<int:review_id>", methods=["GET"])
+def get_review(review_id: int):
+    """Get a specific review by ID."""
+    for r in _reviews:
+        if r["id"] == review_id:
+            return jsonify(r)
+    return jsonify({"error": "Review not found"}), 404
+
+
+@app.route("/v1/metrics", methods=["POST"])
+def report_metrics():
+    """Report driver performance/stability metrics from a running OS.
+
+    Body (JSON):
+        {
+            "driver_name": "virtio_net",
+            "version": "1.0.0",
+            "arch": "x86_64",
+            "uptime_hours": 24.5,
+            "crash_count": 0,
+            "tx_bytes": 1048576,
+            "rx_bytes": 2097152,
+            "error_count": 0
+        }
+
+    Response:
+        { "status": "recorded" }
+    """
+    body = request.get_json(silent=True)
+    if body is None:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    # In production, this would be stored in a time-series database
+    # for driver quality tracking and evolution fitness scoring
+    return jsonify({"status": "recorded"})
 
 
 # ── Error handlers ──

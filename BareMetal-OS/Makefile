@@ -62,7 +62,7 @@ CFLAGS += -ffreestanding -fno-stack-protector -fno-pic -fno-pie \
           -isystem $(shell $(CC) -print-file-name=include)
 
 ifeq ($(ARCH),x86_64)
-    CFLAGS += -mcmodel=kernel
+    CFLAGS += -mcmodel=small
 endif
 
 # ── Source Files ──
@@ -71,13 +71,8 @@ endif
 ARCH_C_SRCS = $(wildcard $(ARCH_DIR)/*.c)
 ARCH_S_SRCS = $(wildcard $(ARCH_DIR)/*.S)
 
-# BareMetal kernel API (x86-64 only — provides b_system, b_output, etc.)
-ifeq ($(ARCH),x86_64)
-    PLATFORM_SRCS = src/BareMetal/api/libBareMetal.c
-    CFLAGS += -Isrc/BareMetal/api
-else
-    PLATFORM_SRCS =
-endif
+# Platform-specific sources (none for standalone boot)
+PLATFORM_SRCS =
 
 # Kernel core
 KERNEL_SRCS = kernel/main.c kernel/sched.c kernel/syscall.c \
@@ -138,14 +133,10 @@ $(BUILD_DIR)/%.o: %.c | dirs
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Assembly compilation (GNU as for ARM/RISC-V)
+# Assembly compilation (GNU as syntax .S files — preprocessed by GCC)
 $(BUILD_DIR)/%.o: %.S | dirs
 	@mkdir -p $(dir $@)
-ifeq ($(ARCH),x86_64)
-	$(AS) $(ASFLAGS) $< -o $@
-else
 	$(CC) $(CFLAGS) -c $< -o $@
-endif
 
 # Directory creation
 dirs:

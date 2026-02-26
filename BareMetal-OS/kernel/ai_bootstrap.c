@@ -11,6 +11,7 @@
 #include "ai_bootstrap.h"
 #include "driver_loader.h"
 #include "../hal/hal.h"
+#include "../store/verify.h"
 
 /* Network/marketplace modules (from net/ and ai/) */
 extern hal_status_t dhcp_discover(uint32_t *ip, uint32_t *gateway, uint32_t *dns);
@@ -21,6 +22,13 @@ extern hal_status_t marketplace_send_manifest(const hardware_manifest_t *m);
 extern hal_status_t marketplace_get_driver(uint16_t vendor, uint16_t device,
                                             void **data, uint64_t *size);
 extern void marketplace_disconnect(void);
+extern hal_status_t marketplace_check_updates(const char *os_version,
+                                               char *update_url, uint32_t url_max);
+
+/* AlJefra Store Ed25519 public key (32 bytes).
+ * In development mode this is all-zeros, and signature verification is skipped.
+ * For production, replace with the real store signing key. */
+static const uint8_t ALJEFRA_STORE_PUBKEY[32] = {0};
 
 static bootstrap_state_t g_state = BOOTSTRAP_INIT;
 
@@ -93,6 +101,15 @@ hal_status_t ai_bootstrap(hal_device_t *devices, uint32_t count)
     hal_status_t rc;
 
     hal_console_puts("[bootstrap] === AI Bootstrap Starting ===\n");
+
+    /* Step 0: Set trusted public key for driver signature verification.
+     * If the key is all-zeros (dev mode), verification is skipped. */
+    int key_nonzero = 0;
+    for (int i = 0; i < 32; i++) {
+        if (ALJEFRA_STORE_PUBKEY[i]) { key_nonzero = 1; break; }
+    }
+    if (key_nonzero)
+        ajdrv_set_trusted_key(ALJEFRA_STORE_PUBKEY);
 
     /* Step 1: Build hardware manifest */
     hardware_manifest_t manifest;
@@ -219,6 +236,17 @@ hal_status_t ai_bootstrap(hal_device_t *devices, uint32_t count)
         /* Free the downloaded data */
         if (drv_data)
             hal_dma_free(drv_data, drv_size);
+    }
+
+    /* Step 7: Check for OS updates before disconnecting */
+    {
+        char update_url[256];
+        update_url[0] = '\0';
+        rc = marketplace_check_updates("0.1.0", update_url, sizeof(update_url));
+        if (rc == HAL_OK && update_url[0]) {
+            hal_console_printf("[bootstrap] OS update: %s\n", update_url);
+            /* OTA update download/apply deferred to next reboot cycle */
+        }
     }
 
     marketplace_disconnect();

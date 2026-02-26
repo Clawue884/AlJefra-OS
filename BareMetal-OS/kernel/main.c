@@ -33,6 +33,8 @@ extern void nvme_register(void);
 extern void touch_register(void);
 extern void ufs_register(void);
 extern void intel_wifi_register(void);
+extern void xhci_register(void);
+extern void bcm_wifi_register(void);
 
 /* ── Hardware manifest (filled by bus scan) ── */
 static hal_device_t g_devices[HAL_BUS_MAX_DEVICES];
@@ -143,6 +145,8 @@ static void register_builtin_drivers(void)
     touch_register();
     ufs_register();
     intel_wifi_register();
+    xhci_register();
+    bcm_wifi_register();
 }
 
 /* ── Load built-in (compiled-in) drivers ── */
@@ -184,16 +188,18 @@ static void load_builtin_drivers(void)
             }
         }
 
-        /* Network: VirtIO-Net */
-        if (d->vendor_id == 0x1AF4 && (d->device_id >= 0x1000 && d->device_id <= 0x103F)) {
-            if (d->subclass == 0x00) {
+        /* Network: VirtIO-Net (legacy 0x1000 + modern 0x1041) */
+        if (d->vendor_id == 0x1AF4 &&
+            (d->device_id == 0x1000 || d->device_id == 0x1041)) {
+            if (d->class_code == PCI_CLASS_NETWORK) {
                 rc = driver_load_builtin("virtio-net", d);
                 if (rc == HAL_OK) loaded++;
             }
         }
 
-        /* Storage: VirtIO-Blk */
-        if (d->vendor_id == 0x1AF4 && d->device_id == 0x1001) {
+        /* Storage: VirtIO-Blk (legacy 0x1001 + modern 0x1042) */
+        if (d->vendor_id == 0x1AF4 &&
+            (d->device_id == 0x1001 || d->device_id == 0x1042)) {
             rc = driver_load_builtin("virtio-blk", d);
             if (rc == HAL_OK) loaded++;
         }
@@ -219,14 +225,88 @@ static void load_builtin_drivers(void)
             }
         }
 
-        /* Input: Touchscreen (Device Tree / platform I2C controllers) */
-        if (d->bus_type == HAL_BUS_DT || d->bus_type == HAL_BUS_MMIO) {
-            rc = driver_load_builtin("touch", d);
-            if (rc == HAL_OK) loaded++;
+        /* Network: Broadcom WiFi (SDIO, via Device Tree on RPi) */
+        if ((d->bus_type == HAL_BUS_DT || d->bus_type == HAL_BUS_MMIO) &&
+            d->compatible[0] != '\0') {
+            const char *c = d->compatible;
+            int is_brcm = 0;
+            for (int j = 0; c[j] && c[j+1] && c[j+2] && c[j+3]; j++) {
+                if (c[j] == 'b' && c[j+1] == 'r' && c[j+2] == 'c' && c[j+3] == 'm') {
+                    is_brcm = 1;
+                    break;
+                }
+            }
+            if (is_brcm) {
+                rc = driver_load_builtin("bcm_wifi", d);
+                if (rc == HAL_OK) loaded++;
+            }
+        }
+
+        /* Input: Touchscreen — only try on I2C controller DT nodes,
+         * NOT on every platform device (avoids MMIO hangs on UART/PLIC/etc) */
+        if ((d->bus_type == HAL_BUS_DT || d->bus_type == HAL_BUS_MMIO) &&
+            d->compatible[0] != '\0') {
+            /* Check if this is an I2C controller */
+            int is_i2c = 0;
+            const char *c = d->compatible;
+            /* Look for "i2c" substring in compatible string */
+            for (int j = 0; c[j] && c[j+1] && c[j+2]; j++) {
+                if (c[j] == 'i' && c[j+1] == '2' && c[j+2] == 'c') {
+                    is_i2c = 1;
+                    break;
+                }
+            }
+            if (is_i2c) {
+                rc = driver_load_builtin("touch", d);
+                if (rc == HAL_OK) loaded++;
+            }
         }
     }
 
     hal_console_printf("[kernel] Loaded %u built-in drivers\n", loaded);
+
+    /* Quick storage test — write a pattern then read it back */
+    const driver_ops_t *stor = driver_get_storage();
+    if (stor && stor->read && stor->write) {
+        hal_console_printf("[kernel] Testing storage driver '%s'...\n", stor->name);
+
+        uint64_t phys;
+        uint8_t *buf = (uint8_t *)hal_dma_alloc(512, &phys);
+        uint8_t *buf2 = (uint8_t *)hal_dma_alloc(512, &phys);
+        if (buf && buf2) {
+            /* Write a known pattern to LBA 0 */
+            for (int i = 0; i < 512; i++)
+                buf[i] = (uint8_t)(0xA5 ^ i);
+
+            int64_t wr = stor->write(buf, 0, 1);
+            if (wr > 0) {
+                /* Clear read buffer */
+                for (int i = 0; i < 512; i++)
+                    buf2[i] = 0;
+
+                /* Read it back */
+                int64_t rd = stor->read(buf2, 0, 1);
+                if (rd > 0) {
+                    /* Verify pattern */
+                    int ok = 1;
+                    for (int i = 0; i < 512; i++) {
+                        if (buf2[i] != (uint8_t)(0xA5 ^ i)) {
+                            ok = 0;
+                            hal_console_printf("[kernel] Storage MISMATCH at byte %d: got 0x%02x expected 0x%02x\n",
+                                               i, buf2[i], (uint8_t)(0xA5 ^ i));
+                            break;
+                        }
+                    }
+                    if (ok)
+                        hal_console_puts("[kernel] Storage READ/WRITE test PASSED\n");
+                } else {
+                    hal_console_puts("[kernel] Storage read failed\n");
+                }
+            } else {
+                hal_console_puts("[kernel] Storage write failed\n");
+            }
+        }
+    }
 }
 
 /* ── Network startup ── */

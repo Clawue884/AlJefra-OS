@@ -452,17 +452,391 @@ hal_status_t marketplace_get_driver(uint16_t vendor_id, uint16_t device_id,
     return HAL_OK;
 }
 
+/* ── Minimal JSON field extraction helpers ── */
+
+/* Find a JSON string value: "key":"value" → copies value into out, returns length */
+static int json_find_string(const char *json, uint32_t json_len,
+                             const char *key, char *out, uint32_t out_max)
+{
+    uint32_t key_len = str_len(key);
+    for (uint32_t i = 0; i + key_len + 4 < json_len; i++) {
+        if (json[i] != '"') continue;
+        /* Match key */
+        int match = 1;
+        for (uint32_t k = 0; k < key_len; k++) {
+            if (json[i + 1 + k] != key[k]) { match = 0; break; }
+        }
+        if (!match || json[i + 1 + key_len] != '"') continue;
+        /* Skip ": */
+        uint32_t j = i + 1 + key_len + 1;
+        while (j < json_len && (json[j] == ':' || json[j] == ' ')) j++;
+        if (j >= json_len || json[j] != '"') continue;
+        j++; /* skip opening quote */
+        /* Copy value */
+        uint32_t n = 0;
+        while (j + n < json_len && json[j + n] != '"' && n < out_max - 1)
+            n++;
+        mem_copy(out, &json[j], n);
+        out[n] = '\0';
+        return (int)n;
+    }
+    out[0] = '\0';
+    return 0;
+}
+
+/* Find a JSON boolean: "key":true/false → returns 1/0, -1 if not found */
+static int json_find_bool(const char *json, uint32_t json_len, const char *key)
+{
+    uint32_t key_len = str_len(key);
+    for (uint32_t i = 0; i + key_len + 4 < json_len; i++) {
+        if (json[i] != '"') continue;
+        int match = 1;
+        for (uint32_t k = 0; k < key_len; k++) {
+            if (json[i + 1 + k] != key[k]) { match = 0; break; }
+        }
+        if (!match || json[i + 1 + key_len] != '"') continue;
+        uint32_t j = i + 1 + key_len + 1;
+        while (j < json_len && (json[j] == ':' || json[j] == ' ')) j++;
+        if (j < json_len && json[j] == 't') return 1;
+        if (j < json_len && json[j] == 'f') return 0;
+    }
+    return -1;
+}
+
+/* ── Shared helper: perform HTTP GET on fresh TCP connection ── */
+static int http_get(const char *path, char *response, uint32_t resp_max)
+{
+    tcp_conn_t conn;
+    hal_status_t rc = tcp_connect(&conn, g_tcp_conn.remote_ip, MARKETPLACE_PORT);
+    if (rc != HAL_OK)
+        return -1;
+
+    char host_str[32];
+    ip_to_str(conn.remote_ip, host_str);
+    char *hp = host_str;
+    while (*hp) hp++;
+    *hp++ = ':';
+    int_to_str(MARKETPLACE_PORT, hp);
+
+    char request[2048];
+    int req_len = build_http_request("GET", path, host_str, NULL, 0,
+                                      request, sizeof(request));
+
+    int32_t sent = tcp_send(&conn, request, (uint32_t)req_len);
+    if (sent < 0) {
+        tcp_close(&conn);
+        return -1;
+    }
+
+    int32_t resp_len = tcp_recv(&conn, response, resp_max - 1, 10000);
+    tcp_close(&conn);
+
+    if (resp_len <= 0)
+        return -1;
+
+    response[resp_len] = '\0';
+    return (int)resp_len;
+}
+
 hal_status_t marketplace_check_updates(const char *os_version,
                                         char *update_url, uint32_t url_max)
 {
-    (void)os_version; (void)update_url; (void)url_max;
-    return HAL_NOT_SUPPORTED;
+    if (!g_connected)
+        return HAL_ERROR;
+
+    /* Build path: /v1/updates/<os_version> */
+    char path[128];
+    char *p = path;
+    const char *base = API_UPDATES "/";
+    while (*base) *p++ = *base++;
+    while (*os_version) *p++ = *os_version++;
+    *p = '\0';
+
+    hal_console_printf("[marketplace] GET %s\n", path);
+
+    char response[4096];
+    int resp_len = http_get(path, response, sizeof(response));
+    if (resp_len < 0)
+        return HAL_TIMEOUT;
+
+    int status = parse_http_status(response, (uint32_t)resp_len);
+    hal_console_printf("[marketplace] Update check: HTTP %d\n", status);
+
+    if (status != 200)
+        return HAL_ERROR;
+
+    const char *body = find_http_body(response, (uint32_t)resp_len);
+    if (!body)
+        return HAL_ERROR;
+
+    uint32_t body_len = (uint32_t)(resp_len - (body - response));
+
+    /* Parse JSON response: {"update_available":bool,"version":"...","download_url":"..."} */
+    int update_available = json_find_bool(body, body_len, "update_available");
+
+    if (update_available <= 0) {
+        hal_console_puts("[marketplace] No updates available\n");
+        if (update_url && url_max > 0) update_url[0] = '\0';
+        return HAL_OK;
+    }
+
+    /* Extract update URL */
+    char version[32];
+    json_find_string(body, body_len, "version", version, sizeof(version));
+    json_find_string(body, body_len, "download_url", update_url, url_max);
+
+    hal_console_printf("[marketplace] Update available: v%s at %s\n", version, update_url);
+    return HAL_OK;
 }
 
 hal_status_t marketplace_get_catalog(marketplace_driver_info_t *drivers,
                                       uint32_t max, uint32_t *count)
 {
-    (void)drivers; (void)max;
     *count = 0;
-    return HAL_NOT_SUPPORTED;
+
+    if (!g_connected)
+        return HAL_ERROR;
+
+    /* Build path with arch filter: /v1/catalog?arch=<arch> */
+    char path[128];
+    char *p = path;
+    const char *base = API_CATALOG "?arch=";
+    while (*base) *p++ = *base++;
+
+    switch (hal_arch()) {
+    case HAL_ARCH_X86_64:  { const char *s = "x86_64";  while (*s) *p++ = *s++; } break;
+    case HAL_ARCH_AARCH64: { const char *s = "aarch64"; while (*s) *p++ = *s++; } break;
+    case HAL_ARCH_RISCV64: { const char *s = "riscv64"; while (*s) *p++ = *s++; } break;
+    }
+    *p = '\0';
+
+    hal_console_printf("[marketplace] GET %s\n", path);
+
+    char response[8192];
+    int resp_len = http_get(path, response, sizeof(response));
+    if (resp_len < 0)
+        return HAL_TIMEOUT;
+
+    int status = parse_http_status(response, (uint32_t)resp_len);
+    hal_console_printf("[marketplace] Catalog: HTTP %d\n", status);
+
+    if (status != 200)
+        return HAL_ERROR;
+
+    const char *body = find_http_body(response, (uint32_t)resp_len);
+    if (!body)
+        return HAL_ERROR;
+
+    uint32_t body_len = (uint32_t)(resp_len - (body - response));
+
+    /* Parse JSON array of drivers.
+     * Server returns: {"drivers":[{...},{...}],"total":N}
+     * Each entry has: name, vendor_id, device_id, version, arch, etc.
+     * We scan for each object within the "drivers" array. */
+    const char *scan = body;
+    const char *body_end = body + body_len;
+    uint32_t n = 0;
+
+    /* Find start of drivers array */
+    while (scan < body_end - 1) {
+        if (*scan == '[') { scan++; break; }
+        scan++;
+    }
+
+    /* Parse each object {...} in the array */
+    while (scan < body_end && n < max) {
+        /* Find next '{' */
+        while (scan < body_end && *scan != '{') {
+            if (*scan == ']') goto done;  /* end of array */
+            scan++;
+        }
+        if (scan >= body_end) break;
+
+        /* Find matching '}' (no nesting expected) */
+        const char *obj_start = scan;
+        int depth = 1;
+        scan++;
+        while (scan < body_end && depth > 0) {
+            if (*scan == '{') depth++;
+            else if (*scan == '}') depth--;
+            scan++;
+        }
+        uint32_t obj_len = (uint32_t)(scan - obj_start);
+
+        /* Extract fields from this driver object */
+        marketplace_driver_info_t *drv = &drivers[n];
+        mem_zero(drv, sizeof(*drv));
+
+        json_find_string(obj_start, obj_len, "name", drv->driver_name, sizeof(drv->driver_name));
+        json_find_string(obj_start, obj_len, "version", drv->version, sizeof(drv->version));
+        json_find_string(obj_start, obj_len, "sha256", drv->sha256, sizeof(drv->sha256));
+        json_find_string(obj_start, obj_len, "download_url", drv->download_url, sizeof(drv->download_url));
+
+        /* Parse vendor_id and device_id from hex strings */
+        char hex_buf[8];
+        if (json_find_string(obj_start, obj_len, "vendor_id", hex_buf, sizeof(hex_buf)) > 0) {
+            uint16_t v = 0;
+            for (int i = 0; hex_buf[i]; i++) {
+                v <<= 4;
+                char c = hex_buf[i];
+                if (c >= '0' && c <= '9') v |= (uint16_t)(c - '0');
+                else if (c >= 'a' && c <= 'f') v |= (uint16_t)(c - 'a' + 10);
+                else if (c >= 'A' && c <= 'F') v |= (uint16_t)(c - 'A' + 10);
+            }
+            drv->vendor_id = v;
+        }
+        if (json_find_string(obj_start, obj_len, "device_id", hex_buf, sizeof(hex_buf)) > 0) {
+            uint16_t v = 0;
+            for (int i = 0; hex_buf[i]; i++) {
+                v <<= 4;
+                char c = hex_buf[i];
+                if (c >= '0' && c <= '9') v |= (uint16_t)(c - '0');
+                else if (c >= 'a' && c <= 'f') v |= (uint16_t)(c - 'a' + 10);
+                else if (c >= 'A' && c <= 'F') v |= (uint16_t)(c - 'A' + 10);
+            }
+            drv->device_id = v;
+        }
+
+        /* Only count entries with a valid name */
+        if (drv->driver_name[0]) n++;
+    }
+
+done:
+    *count = n;
+    hal_console_printf("[marketplace] Catalog: %u drivers\n", n);
+    return HAL_OK;
+}
+
+/* ── Shared helper: HTTP POST with JSON body on fresh TCP connection ── */
+static int http_post(const char *path, const char *json_body, int body_len,
+                     char *response, uint32_t resp_max)
+{
+    tcp_conn_t conn;
+    hal_status_t rc = tcp_connect(&conn, g_tcp_conn.remote_ip, MARKETPLACE_PORT);
+    if (rc != HAL_OK)
+        return -1;
+
+    char host_str[32];
+    ip_to_str(conn.remote_ip, host_str);
+    char *hp = host_str;
+    while (*hp) hp++;
+    *hp++ = ':';
+    int_to_str(MARKETPLACE_PORT, hp);
+
+    char request[4096];
+    int req_len = build_http_request("POST", path, host_str,
+                                      json_body, body_len, request, sizeof(request));
+
+    int32_t sent = tcp_send(&conn, request, (uint32_t)req_len);
+    if (sent < 0) { tcp_close(&conn); return -1; }
+
+    int32_t resp_len = tcp_recv(&conn, response, resp_max - 1, 10000);
+    tcp_close(&conn);
+
+    if (resp_len <= 0) return -1;
+    response[resp_len] = '\0';
+    return (int)resp_len;
+}
+
+/* ── Report driver metrics for quality tracking ── */
+hal_status_t marketplace_report_metrics(const char *driver_name,
+                                         const char *version,
+                                         uint32_t uptime_secs,
+                                         uint32_t error_count)
+{
+    if (!g_connected)
+        return HAL_ERROR;
+
+    /* Build JSON payload */
+    char json[512];
+    char *p = json;
+    char *end = json + sizeof(json) - 1;
+
+    #define JAPPEND(s) do { const char *_s = (s); while (*_s && p < end) *p++ = *_s++; } while(0)
+
+    JAPPEND("{\"driver_name\":\"");
+    JAPPEND(driver_name);
+    JAPPEND("\",\"version\":\"");
+    JAPPEND(version);
+    JAPPEND("\",\"arch\":\"");
+    switch (hal_arch()) {
+    case HAL_ARCH_X86_64:  JAPPEND("x86_64"); break;
+    case HAL_ARCH_AARCH64: JAPPEND("aarch64"); break;
+    case HAL_ARCH_RISCV64: JAPPEND("riscv64"); break;
+    }
+    JAPPEND("\",\"uptime_secs\":");
+    char num[16];
+    int_to_str(uptime_secs, num);
+    JAPPEND(num);
+    JAPPEND(",\"error_count\":");
+    int_to_str(error_count, num);
+    JAPPEND(num);
+    JAPPEND("}");
+    *p = '\0';
+    #undef JAPPEND
+
+    int json_len = (int)(p - json);
+
+    char response[1024];
+    int resp_len = http_post("/v1/metrics", json, json_len, response, sizeof(response));
+    if (resp_len < 0)
+        return HAL_ERROR;
+
+    int status = parse_http_status(response, (uint32_t)resp_len);
+    return (status == 200 || status == 201) ? HAL_OK : HAL_ERROR;
+}
+
+/* ── Submit evolved driver variant ── */
+hal_status_t marketplace_submit_evolution(const char *base_driver,
+                                           const char *description,
+                                           const void *ajdrv_data,
+                                           uint64_t ajdrv_size)
+{
+    if (!g_connected)
+        return HAL_ERROR;
+
+    /* Build JSON metadata (binary upload not supported over raw TCP/HTTP,
+     * so we send metadata only — the binary can be uploaded via the web API) */
+    char json[1024];
+    char *p = json;
+    char *end = json + sizeof(json) - 1;
+
+    #define JAPPEND(s) do { const char *_s = (s); while (*_s && p < end) *p++ = *_s++; } while(0)
+
+    JAPPEND("{\"base_driver\":\"");
+    JAPPEND(base_driver);
+    JAPPEND("\",\"arch\":\"");
+    switch (hal_arch()) {
+    case HAL_ARCH_X86_64:  JAPPEND("x86_64"); break;
+    case HAL_ARCH_AARCH64: JAPPEND("aarch64"); break;
+    case HAL_ARCH_RISCV64: JAPPEND("riscv64"); break;
+    }
+    JAPPEND("\",\"optimization_type\":\"performance\"");
+    JAPPEND(",\"description\":\"");
+    JAPPEND(description);
+    JAPPEND("\",\"author\":\"aljefra-os-agent\"");
+    JAPPEND(",\"has_binary\":true");
+
+    char num[16];
+    JAPPEND(",\"code_size\":");
+    int_to_str((uint32_t)ajdrv_size, num);
+    JAPPEND(num);
+    JAPPEND("}");
+    *p = '\0';
+    #undef JAPPEND
+
+    int json_len = (int)(p - json);
+    (void)ajdrv_data; /* Binary upload via multipart is future work */
+
+    char response[1024];
+    int resp_len = http_post("/v1/evolve", json, json_len, response, sizeof(response));
+    if (resp_len < 0)
+        return HAL_ERROR;
+
+    int status = parse_http_status(response, (uint32_t)resp_len);
+    if (status == 200 || status == 201) {
+        hal_console_puts("[marketplace] Evolution submitted successfully\n");
+        return HAL_OK;
+    }
+    return HAL_ERROR;
 }

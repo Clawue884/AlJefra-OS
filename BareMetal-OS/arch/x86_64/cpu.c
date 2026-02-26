@@ -1,17 +1,10 @@
 /* SPDX-License-Identifier: MIT */
-/* AlJefra OS — x86-64 CPU HAL Implementation
- * Wraps CPUID, FPU/SSE, RDTSC, RDRAND, and kernel SMP calls.
+/* AlJefra OS — x86-64 CPU HAL Implementation (Standalone)
+ * CPUID, FPU/SSE, RDTSC, RDRAND.  No BareMetal b_system() dependency.
+ * Core count and APIC ID read directly from CPUID.
  */
 
 #include "../../hal/hal.h"
-
-/* BareMetal kernel API */
-extern uint64_t b_system(uint64_t function, uint64_t var1, uint64_t var2);
-
-/* b_system function codes */
-#define SYS_SMP_ID        0x10
-#define SYS_SMP_NUMCORES  0x11
-#define SYS_TSC           0x1F
 
 /* -------------------------------------------------------------------------- */
 /* Internal helpers                                                           */
@@ -140,9 +133,14 @@ hal_status_t hal_cpu_init(void)
         cpuid(0x80000004, 0, &model[8], &model[9], &model[10], &model[11]);
     }
 
-    /* Core counts from kernel */
-    cached_info.cores_logical = (uint32_t)b_system(SYS_SMP_NUMCORES, 0, 0);
-    cached_info.cores_physical = cached_info.cores_logical; /* No HT distinction in BareMetal */
+    /* Core count from CPUID leaf 1, EBX[23:16] = max logical processors per package.
+     * This gives the number the CPU *supports*, not how many are actually online.
+     * For SMP-aware count, use hal_smp_core_count() instead. */
+    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    cached_info.cores_logical = (ebx >> 16) & 0xFF;
+    if (cached_info.cores_logical == 0)
+        cached_info.cores_logical = 1;
+    cached_info.cores_physical = cached_info.cores_logical;
 
     info_cached = true;
     return HAL_OK;
@@ -158,13 +156,19 @@ void hal_cpu_get_info(hal_cpu_info_t *info)
 
 uint64_t hal_cpu_id(void)
 {
-    /* Read local APIC ID via kernel */
-    return b_system(SYS_SMP_ID, 0, 0);
+    /* Read initial APIC ID from CPUID leaf 1, EBX[31:24] */
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    return (ebx >> 24) & 0xFF;
 }
 
 uint32_t hal_cpu_count(void)
 {
-    return (uint32_t)b_system(SYS_SMP_NUMCORES, 0, 0);
+    /* CPUID leaf 1, EBX[23:16] = max logical processors per package */
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    uint32_t count = (ebx >> 16) & 0xFF;
+    return count > 0 ? count : 1;
 }
 
 void hal_cpu_halt(void)

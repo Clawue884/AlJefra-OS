@@ -441,6 +441,8 @@ hal_status_t emmc_init(sdhci_dev_t *dev, volatile void *regs)
     dev->base_clock = ((caps >> 8) & 0xFF) * 1000000;  /* MHz to Hz */
     if (dev->base_clock == 0)
         dev->base_clock = 50000000;  /* Default 50MHz */
+    dev->caps2 = emmc_read32(dev, SDHCI_CAPABILITIES2);
+    dev->speed_mode = SD_SPEED_DEFAULT;
 
     /* Power on */
     emmc_power_on(dev);
@@ -470,6 +472,10 @@ hal_status_t emmc_init(sdhci_dev_t *dev, volatile void *regs)
         return st;
 
     dev->initialized = true;
+
+    /* Auto-tune to highest supported speed */
+    emmc_tune_speed(dev);
+
     return HAL_OK;
 }
 
@@ -558,5 +564,299 @@ hal_status_t emmc_get_card_info(sdhci_dev_t *dev, sd_card_t *info)
     if (!dev->initialized)
         return HAL_ERROR;
     *info = dev->card;
+    return HAL_OK;
+}
+
+/* ── Speed Tuning for SBCs ── */
+
+/* CMD6 (SWITCH_FUNC): Check or set access mode.
+ * mode: SD_SWITCH_CHECK (0) or SD_SWITCH_SET (1)
+ * func: access mode value (HS=1, SDR50=2, SDR104=3, DDR50=4)
+ * Returns HAL_OK if the function is supported and switched. */
+static hal_status_t emmc_switch_func(sdhci_dev_t *dev, uint32_t mode,
+                                      uint32_t func, uint8_t *status_buf)
+{
+    /* CMD6 argument:
+     * [31]    = mode (0=check, 1=set)
+     * [3:0]   = function group 1 (Access Mode)
+     * [15:4]  = keep current for groups 2-6 (0xFFFFF0)
+     */
+    uint32_t arg = (mode << 31) | 0x00FFFFF0 | (func & 0x0F);
+
+    /* CMD6 returns 512 bits (64 bytes) of status data */
+    emmc_write16(dev, SDHCI_BLOCK_SIZE, 64);
+    emmc_write16(dev, SDHCI_BLOCK_COUNT, 1);
+
+    uint16_t tm = SDHCI_TM_READ | SDHCI_TM_BLK_CNT_EN;
+    emmc_write16(dev, SDHCI_TRANSFER_MODE, tm);
+
+    uint32_t resp[4];
+    hal_status_t st = emmc_send_cmd(dev, SD_CMD_SWITCH_FUNC, arg,
+                                     SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK |
+                                     SDHCI_CMD_IDX_CHECK | SDHCI_CMD_DATA, resp);
+    if (st != HAL_OK)
+        return st;
+
+    /* Read the 64 bytes of switch status via PIO */
+    st = emmc_wait_int(dev, SDHCI_INT_BUF_RD, EMMC_TIMEOUT_MS);
+    if (st != HAL_OK) {
+        emmc_reset(dev, SDHCI_RESET_DATA);
+        return st;
+    }
+
+    uint32_t *dst = (uint32_t *)status_buf;
+    for (int i = 0; i < 16; i++)
+        dst[i] = emmc_read32(dev, SDHCI_DATA_PORT);
+
+    /* Wait for transfer complete */
+    st = emmc_wait_int(dev, SDHCI_INT_XFER_DONE, EMMC_TIMEOUT_MS);
+    if (st != HAL_OK) {
+        emmc_reset(dev, SDHCI_RESET_DATA);
+        return st;
+    }
+
+    return HAL_OK;
+}
+
+/* Set High-Speed mode in the host controller */
+static void emmc_host_set_hs(sdhci_dev_t *dev, bool enable)
+{
+    uint8_t hc = emmc_read8(dev, SDHCI_HOST_CONTROL);
+    if (enable)
+        hc |= 0x04;  /* High Speed Enable (bit 2) */
+    else
+        hc &= ~0x04;
+    emmc_write8(dev, SDHCI_HOST_CONTROL, hc);
+}
+
+/* Execute tuning sequence for SDR50/SDR104 */
+static hal_status_t emmc_execute_tuning(sdhci_dev_t *dev)
+{
+    uint16_t hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+    hc2 |= SDHCI_HC2_EXEC_TUNING;
+    emmc_write16(dev, SDHCI_HOST_CONTROL2, hc2);
+
+    /* Send CMD19 (SEND_TUNING_BLOCK) repeatedly until tuning completes */
+    for (int i = 0; i < 40; i++) {
+        /* Set up for 64-byte tuning block */
+        emmc_write16(dev, SDHCI_BLOCK_SIZE, 64);
+        emmc_write16(dev, SDHCI_BLOCK_COUNT, 1);
+        emmc_write16(dev, SDHCI_TRANSFER_MODE, SDHCI_TM_READ);
+
+        uint32_t resp[4];
+        emmc_send_cmd(dev, 19 /* CMD19 */, 0,
+                       SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK |
+                       SDHCI_CMD_IDX_CHECK | SDHCI_CMD_DATA, resp);
+
+        /* Read tuning data (discard) */
+        emmc_wait_int(dev, SDHCI_INT_BUF_RD, 100);
+        for (int w = 0; w < 16; w++)
+            (void)emmc_read32(dev, SDHCI_DATA_PORT);
+        emmc_wait_int(dev, SDHCI_INT_XFER_DONE, 100);
+
+        /* Check if tuning is complete */
+        hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+        if (!(hc2 & SDHCI_HC2_EXEC_TUNING)) {
+            if (hc2 & SDHCI_HC2_TUNED_CLK) {
+                hal_console_puts("[emmc] Tuning complete\n");
+                return HAL_OK;
+            }
+            break;
+        }
+        hal_timer_delay_us(1000);
+    }
+
+    /* Tuning failed — clear bits */
+    hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+    hc2 &= ~(SDHCI_HC2_EXEC_TUNING | SDHCI_HC2_TUNED_CLK);
+    emmc_write16(dev, SDHCI_HOST_CONTROL2, hc2);
+
+    hal_console_puts("[emmc] Tuning failed (non-fatal)\n");
+    return HAL_ERROR;
+}
+
+/* Signal voltage switch to 1.8V for UHS-I modes */
+static hal_status_t emmc_switch_1v8(sdhci_dev_t *dev)
+{
+    /* Stop clock */
+    uint16_t clk = emmc_read16(dev, SDHCI_CLOCK_CONTROL);
+    clk &= ~0x04;
+    emmc_write16(dev, SDHCI_CLOCK_CONTROL, clk);
+
+    /* Check DAT[3:0] are low */
+    uint32_t state = emmc_read32(dev, SDHCI_PRESENT_STATE);
+    if (state & (0xF << 20)) {
+        /* DAT lines not low — can't switch voltage */
+        clk |= 0x04;
+        emmc_write16(dev, SDHCI_CLOCK_CONTROL, clk);
+        return HAL_ERROR;
+    }
+
+    /* Set 1.8V signaling */
+    uint16_t hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+    hc2 |= SDHCI_HC2_1V8_SIG;
+    emmc_write16(dev, SDHCI_HOST_CONTROL2, hc2);
+    hal_timer_delay_ms(5);
+
+    /* Verify 1.8V bit stuck */
+    hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+    if (!(hc2 & SDHCI_HC2_1V8_SIG)) {
+        clk |= 0x04;
+        emmc_write16(dev, SDHCI_CLOCK_CONTROL, clk);
+        return HAL_ERROR;
+    }
+
+    /* Re-enable clock */
+    clk |= 0x04;
+    emmc_write16(dev, SDHCI_CLOCK_CONTROL, clk);
+    hal_timer_delay_ms(1);
+
+    /* Check DAT[3:0] are high (card responded to voltage switch) */
+    state = emmc_read32(dev, SDHCI_PRESENT_STATE);
+    if (!(state & (0xF << 20))) {
+        hal_console_puts("[emmc] 1.8V switch: DAT lines didn't come up\n");
+        return HAL_ERROR;
+    }
+
+    return HAL_OK;
+}
+
+hal_status_t emmc_tune_speed(sdhci_dev_t *dev)
+{
+    if (!dev->initialized)
+        return HAL_ERROR;
+
+    /* Only SD v2+ cards support CMD6 */
+    if (dev->card.type != SD_CARD_TYPE_SD_V2 &&
+        dev->card.type != SD_CARD_TYPE_SDHC) {
+        dev->speed_mode = SD_SPEED_DEFAULT;
+        return HAL_OK;
+    }
+
+    /* Read capabilities 2 */
+    dev->caps2 = emmc_read32(dev, SDHCI_CAPABILITIES2);
+    dev->uhs_support = (dev->caps2 & (SDHCI_CAP2_SDR50 | SDHCI_CAP2_SDR104 |
+                                       SDHCI_CAP2_DDR50)) != 0;
+
+    /* Step 1: Try High-Speed mode (SDR25 = 50MHz) via CMD6 */
+    uint8_t sw_status[64];
+    emmc_memzero(sw_status, sizeof(sw_status));
+
+    /* Check if HS is supported (CMD6 mode=check) */
+    hal_status_t st = emmc_switch_func(dev, SD_SWITCH_CHECK,
+                                         SD_ACCESS_MODE_HS, sw_status);
+    if (st != HAL_OK) {
+        hal_console_puts("[emmc] CMD6 check not supported\n");
+        dev->speed_mode = SD_SPEED_DEFAULT;
+        return HAL_OK;
+    }
+
+    /* Switch status byte 16 bits [3:0] = group 1 function support bits
+     * Byte 13 (big-endian offset) has group 1 support.
+     * Bytes 12-13 (big-endian) = function group 1 support bits.
+     * Bit 1 set means HS is supported. */
+    uint16_t group1_support = ((uint16_t)sw_status[12] << 8) | sw_status[13];
+
+    if (!(group1_support & (1u << SD_ACCESS_MODE_HS))) {
+        hal_console_puts("[emmc] High-Speed mode not supported by card\n");
+        dev->speed_mode = SD_SPEED_DEFAULT;
+        return HAL_OK;
+    }
+
+    /* Set High-Speed mode (CMD6 mode=set) */
+    emmc_memzero(sw_status, sizeof(sw_status));
+    st = emmc_switch_func(dev, SD_SWITCH_SET, SD_ACCESS_MODE_HS, sw_status);
+    if (st != HAL_OK) {
+        hal_console_puts("[emmc] CMD6 switch to HS failed\n");
+        dev->speed_mode = SD_SPEED_DEFAULT;
+        return HAL_OK;
+    }
+
+    /* Verify switch result: byte 16 bits [3:0] should be the selected function */
+    uint8_t selected = sw_status[16] & 0x0F;
+    if (selected != SD_ACCESS_MODE_HS) {
+        hal_console_printf("[emmc] HS switch rejected: selected=%u\n", selected);
+        dev->speed_mode = SD_SPEED_DEFAULT;
+        return HAL_OK;
+    }
+
+    /* Enable HS in host controller and set 50MHz */
+    emmc_host_set_hs(dev, true);
+    emmc_set_clock(dev, 50000000);
+    dev->speed_mode = SD_SPEED_HIGH;
+    hal_console_puts("[emmc] High-Speed mode: 50 MHz\n");
+
+    /* Step 2: Try UHS-I modes if controller supports them */
+    if (!dev->uhs_support || !dev->card.sdhc) {
+        hal_console_printf("[emmc] Speed mode: %s (%u MHz)\n",
+                           dev->speed_mode == SD_SPEED_HIGH ? "HS" : "DS",
+                           dev->speed_mode == SD_SPEED_HIGH ? 50 : 25);
+        return HAL_OK;
+    }
+
+    /* Try voltage switch to 1.8V for UHS-I */
+    st = emmc_switch_1v8(dev);
+    if (st != HAL_OK) {
+        hal_console_puts("[emmc] 1.8V signaling not available, staying at HS\n");
+        return HAL_OK;
+    }
+
+    /* Try SDR50 if supported */
+    if (dev->caps2 & SDHCI_CAP2_SDR50) {
+        emmc_memzero(sw_status, sizeof(sw_status));
+        st = emmc_switch_func(dev, SD_SWITCH_CHECK, SD_ACCESS_MODE_SDR50, sw_status);
+        if (st == HAL_OK) {
+            group1_support = ((uint16_t)sw_status[12] << 8) | sw_status[13];
+            if (group1_support & (1u << SD_ACCESS_MODE_SDR50)) {
+                emmc_memzero(sw_status, sizeof(sw_status));
+                st = emmc_switch_func(dev, SD_SWITCH_SET, SD_ACCESS_MODE_SDR50, sw_status);
+                if (st == HAL_OK && (sw_status[16] & 0x0F) == SD_ACCESS_MODE_SDR50) {
+                    /* Set UHS mode in host controller */
+                    uint16_t hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+                    hc2 = (hc2 & ~SDHCI_HC2_UHS_MASK) | SDHCI_HC2_SDR50;
+                    emmc_write16(dev, SDHCI_HOST_CONTROL2, hc2);
+
+                    emmc_set_clock(dev, 100000000);
+                    dev->speed_mode = SD_SPEED_SDR50;
+                    hal_console_puts("[emmc] SDR50 mode: 100 MHz\n");
+
+                    /* Execute tuning if required */
+                    if (dev->caps2 & SDHCI_CAP2_TUNING_SDR50)
+                        emmc_execute_tuning(dev);
+
+                    return HAL_OK;
+                }
+            }
+        }
+    }
+
+    /* Try DDR50 if supported */
+    if (dev->caps2 & SDHCI_CAP2_DDR50) {
+        emmc_memzero(sw_status, sizeof(sw_status));
+        st = emmc_switch_func(dev, SD_SWITCH_CHECK, SD_ACCESS_MODE_DDR50, sw_status);
+        if (st == HAL_OK) {
+            group1_support = ((uint16_t)sw_status[12] << 8) | sw_status[13];
+            if (group1_support & (1u << SD_ACCESS_MODE_DDR50)) {
+                emmc_memzero(sw_status, sizeof(sw_status));
+                st = emmc_switch_func(dev, SD_SWITCH_SET, SD_ACCESS_MODE_DDR50, sw_status);
+                if (st == HAL_OK && (sw_status[16] & 0x0F) == SD_ACCESS_MODE_DDR50) {
+                    uint16_t hc2 = emmc_read16(dev, SDHCI_HOST_CONTROL2);
+                    hc2 = (hc2 & ~SDHCI_HC2_UHS_MASK) | SDHCI_HC2_DDR50;
+                    emmc_write16(dev, SDHCI_HOST_CONTROL2, hc2);
+
+                    emmc_set_clock(dev, 50000000);
+                    dev->speed_mode = SD_SPEED_DDR50;
+                    hal_console_puts("[emmc] DDR50 mode: 50 MHz DDR\n");
+                    return HAL_OK;
+                }
+            }
+        }
+    }
+
+    hal_console_printf("[emmc] Final speed mode: %s\n",
+                       dev->speed_mode == SD_SPEED_HIGH ? "HS (50MHz)" :
+                       dev->speed_mode == SD_SPEED_SDR50 ? "SDR50 (100MHz)" :
+                       dev->speed_mode == SD_SPEED_DDR50 ? "DDR50 (50MHz DDR)" :
+                       "Default (25MHz)");
     return HAL_OK;
 }

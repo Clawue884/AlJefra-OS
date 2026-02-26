@@ -258,9 +258,13 @@ static hal_status_t vnet_find_pci_caps(virtio_net_dev_t *dev, hal_device_t *hal_
         uint8_t cap_next = (uint8_t)((cap_hdr >> 8) & 0xFF);
 
         if (cap_id == 0x09) {
+            /* VirtIO PCI cap layout:
+             * dword 0: cap_vndr(8) | cap_next(8) | cap_len(8) | cfg_type(8)
+             * dword 1: bar(8) | id(8) | padding(16)
+             * dword 2: offset(32) */
+            uint8_t cfg_type = (uint8_t)((cap_hdr >> 24) & 0xFF);
             uint32_t dw1 = hal_bus_pci_read32(bdf, cap_ptr + 4);
-            uint8_t cfg_type = (uint8_t)(dw1 & 0xFF);
-            uint8_t bar_idx  = (uint8_t)((dw1 >> 8) & 0xFF);
+            uint8_t bar_idx  = (uint8_t)(dw1 & 0xFF);
             uint32_t offset  = hal_bus_pci_read32(bdf, cap_ptr + 8);
 
             if (!bar_mapped[bar_idx] && bar_idx < HAL_BUS_MAX_BARS)

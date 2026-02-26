@@ -1,46 +1,86 @@
 /* SPDX-License-Identifier: MIT */
-/* AlJefra OS — x86-64 Timer HAL Implementation
- * Wraps the kernel's HPET/KVM clock via b_system(TIMECOUNTER).
+/* AlJefra OS — x86-64 Timer HAL Implementation (Standalone)
  *
- * CRITICAL: b_system(TIMECOUNTER, 0, 0) returns nanoseconds since boot,
- * NOT microseconds or milliseconds.  See MEMORY.md bug fixes.
+ * Uses RDTSC for nanosecond timing. TSC frequency is calibrated
+ * against the PIT (Programmable Interval Timer) at init time.
  */
 
 #include "../../hal/hal.h"
 
-/* BareMetal kernel API */
-extern uint64_t b_system(uint64_t function, uint64_t var1, uint64_t var2);
+/* -------------------------------------------------------------------------- */
+/* TSC (Time Stamp Counter)                                                   */
+/* -------------------------------------------------------------------------- */
 
-/* b_system function codes */
-#define SYS_TIMECOUNTER    0x00
-#define SYS_CALLBACK_TIMER 0x60
-#define SYS_TSC            0x1F
-#define SYS_DELAY          0x72
+static uint64_t tsc_freq_hz;     /* TSC ticks per second */
+static uint64_t tsc_boot;        /* TSC value at boot (init time) */
+static bool timer_initialized = false;
+
+static inline uint64_t rdtsc(void)
+{
+    uint32_t lo, hi;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+/* PIT ports */
+#define PIT_CH2_DATA  0x42
+#define PIT_CMD       0x43
+#define PIT_PORT_B    0x61
+
+static inline uint8_t inb(uint16_t port)
+{
+    uint8_t val;
+    __asm__ volatile ("inb %1, %0" : "=a"(val) : "Nd"(port));
+    return val;
+}
+
+static inline void outb(uint16_t port, uint8_t val)
+{
+    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+
+/* Calibrate TSC against PIT Channel 2.
+ * PIT runs at 1.193182 MHz. We time ~10ms (11932 PIT ticks). */
+static uint64_t calibrate_tsc(void)
+{
+    /* PIT Channel 2, Mode 0 (one-shot), binary */
+    outb(PIT_CMD, 0xB0);    /* Ch 2, lobyte/hibyte, mode 0, binary */
+
+    /* Count for ~10ms: 11932 ticks at 1.193182 MHz */
+    uint16_t count = 11932;
+    outb(PIT_CH2_DATA, (uint8_t)(count & 0xFF));
+    outb(PIT_CH2_DATA, (uint8_t)((count >> 8) & 0xFF));
+
+    /* Enable PIT Channel 2 gate */
+    uint8_t portb = inb(PIT_PORT_B);
+    outb(PIT_PORT_B, (portb & 0xFC) | 0x01);  /* Gate high, speaker off */
+
+    /* Restart: toggle gate */
+    outb(PIT_PORT_B, (portb & 0xFC) | 0x00);
+    outb(PIT_PORT_B, (portb & 0xFC) | 0x01);
+
+    /* Read TSC before waiting */
+    uint64_t tsc_start = rdtsc();
+
+    /* Wait for PIT output to go high (bit 5 of port 0x61) */
+    while (!(inb(PIT_PORT_B) & 0x20)) {
+        __asm__ volatile ("pause");
+    }
+
+    uint64_t tsc_end = rdtsc();
+    uint64_t tsc_elapsed = tsc_end - tsc_start;
+
+    /* TSC freq = tsc_elapsed / (count / 1193182) = tsc_elapsed * 1193182 / count */
+    return (tsc_elapsed * 1193182ULL) / count;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Timer callback state                                                       */
 /* -------------------------------------------------------------------------- */
 
-static bool timer_initialized = false;
 static hal_timer_callback_t armed_callback = 0;
 static void *armed_ctx = 0;
 static uint64_t armed_deadline_ns = 0;
-
-/* Timer ISR thunk: called by kernel when timer fires */
-static void timer_isr_thunk(void)
-{
-    if (armed_callback && armed_deadline_ns > 0) {
-        uint64_t now = b_system(SYS_TIMECOUNTER, 0, 0);
-        if (now >= armed_deadline_ns) {
-            hal_timer_callback_t cb = armed_callback;
-            void *ctx = armed_ctx;
-            /* Disarm before calling to allow re-arming from callback */
-            armed_callback = 0;
-            armed_deadline_ns = 0;
-            cb(ctx);
-        }
-    }
-}
 
 /* -------------------------------------------------------------------------- */
 /* HAL Timer API                                                              */
@@ -48,14 +88,13 @@ static void timer_isr_thunk(void)
 
 hal_status_t hal_timer_init(void)
 {
-    /* The kernel already initializes HPET or KVM clock during boot.
-     * We just verify that TIMECOUNTER returns a sane value. */
-    uint64_t t1 = b_system(SYS_TIMECOUNTER, 0, 0);
-    uint64_t t2 = b_system(SYS_TIMECOUNTER, 0, 0);
+    tsc_freq_hz = calibrate_tsc();
+    tsc_boot = rdtsc();
 
-    /* Sanity: time must be monotonically non-decreasing */
-    if (t2 < t1) {
-        return HAL_ERROR;
+    /* Sanity check: TSC should be at least 100 MHz */
+    if (tsc_freq_hz < 100000000ULL) {
+        /* Fallback: assume 1 GHz */
+        tsc_freq_hz = 1000000000ULL;
     }
 
     timer_initialized = true;
@@ -64,24 +103,23 @@ hal_status_t hal_timer_init(void)
 
 uint64_t hal_timer_ns(void)
 {
-    return b_system(SYS_TIMECOUNTER, 0, 0);
+    uint64_t elapsed_ticks = rdtsc() - tsc_boot;
+    /* ns = elapsed_ticks * 1,000,000,000 / tsc_freq_hz
+     * To avoid overflow, use: (elapsed_ticks / tsc_freq_hz) * 1e9 + remainder
+     * But for better precision: split into seconds and fraction */
+    uint64_t secs = elapsed_ticks / tsc_freq_hz;
+    uint64_t frac = elapsed_ticks % tsc_freq_hz;
+    return secs * 1000000000ULL + (frac * 1000000000ULL) / tsc_freq_hz;
 }
 
 void hal_timer_delay_us(uint64_t us)
 {
     if (us == 0) return;
 
-    uint64_t target_ns = us * 1000ULL;
-    uint64_t start = b_system(SYS_TIMECOUNTER, 0, 0);
+    uint64_t target_ticks = (us * tsc_freq_hz) / 1000000ULL;
+    uint64_t start = rdtsc();
 
-    /* Busy-wait loop.  Use a compiler barrier to prevent the optimizer
-     * from hoisting the b_system call out of the loop. */
-    for (;;) {
-        uint64_t now = b_system(SYS_TIMECOUNTER, 0, 0);
-        if ((now - start) >= target_ns)
-            break;
-        /* Hint to the CPU that we are in a spin-wait (PAUSE instruction).
-         * Reduces power consumption and avoids memory-order violations. */
+    while ((rdtsc() - start) < target_ticks) {
         __asm__ volatile ("pause");
     }
 }
@@ -89,30 +127,19 @@ void hal_timer_delay_us(uint64_t us)
 hal_status_t hal_timer_arm(uint64_t ns, hal_timer_callback_t cb, void *ctx)
 {
     if (ns == 0) {
-        /* Disarm */
         armed_callback = 0;
         armed_ctx = 0;
         armed_deadline_ns = 0;
-        b_system(SYS_CALLBACK_TIMER, 0, 0);
         return HAL_OK;
     }
 
-    uint64_t now = b_system(SYS_TIMECOUNTER, 0, 0);
-    armed_deadline_ns = now + ns;
+    armed_deadline_ns = hal_timer_ns() + ns;
     armed_ctx = ctx;
     armed_callback = cb;
-
-    /* Register our thunk as the timer callback.
-     * The kernel will call it on each timer tick. */
-    b_system(SYS_CALLBACK_TIMER, (uint64_t)(uintptr_t)timer_isr_thunk, 0);
-
     return HAL_OK;
 }
 
 uint64_t hal_timer_freq_hz(void)
 {
-    /* The kernel timer returns nanoseconds, so effective frequency
-     * is 1 GHz (1 tick = 1 ns).  For TSC-based timing, the actual
-     * TSC frequency varies by CPU but the kernel abstracts this away. */
-    return 1000000000ULL;
+    return tsc_freq_hz;
 }

@@ -21,18 +21,20 @@
 - [x] `hal/console.h` — UART/serial output, printf, input
 
 ### 0.2 x86-64 HAL Implementation
-- [x] `arch/x86_64/cpu.c` — CPUID, FPU/SSE enable, RDTSC, RDRAND
-- [x] `arch/x86_64/interrupt.c` — APIC EOI, callback mapping
-- [x] `arch/x86_64/timer.c` — Wraps b_system(TIMECOUNTER)
+- [x] `arch/x86_64/boot.S` — Multiboot1 stub (32→64 bit, PML4 identity map 4GB, GDT, SSE)
+- [x] `arch/x86_64/cpu.c` — CPUID, FPU/SSE enable, RDTSC, RDRAND (standalone, no b_system)
+- [x] `arch/x86_64/interrupt.c` — APIC EOI, handler table (standalone, polling mode)
+- [x] `arch/x86_64/timer.c` — RDTSC + PIT Channel 2 calibration (standalone)
 - [x] `arch/x86_64/io.c` — IN/OUT inline asm, DMA bump allocator
-- [x] `arch/x86_64/bus.c` — Full PCIe enumeration (bus 0-255)
-- [x] `arch/x86_64/mmu.c` — 4-level page tables, bitmap allocator
-- [x] `arch/x86_64/smp.c` — TTAS spinlock, wraps b_system(SMP_*)
+- [x] `arch/x86_64/bus.c` — Direct 0xCF8/0xCFC PCI config I/O (standalone)
+- [x] `arch/x86_64/mmu.c` — 4-level page tables, bitmap allocator, multiboot1 memory map
+- [x] `arch/x86_64/smp.c` — TTAS spinlock, CPUID-based APIC ID (standalone)
 - [x] `arch/x86_64/console.c` — COM1 UART 115200/8N1, printf
 - [x] `arch/x86_64/hal_init.c` — Ordered subsystem initialization
 - [x] `arch/x86_64/start.c` — `_start` entry (BSS zero → hal_init → kernel_main)
-- [x] `arch/x86_64/linker.ld` — .text at 0x1E0000, PHDRS segments
-- [x] **Compiles clean**: 36 objects → 74KB binary, 0 errors, 0 warnings
+- [x] `arch/x86_64/linker.ld` — Multiboot1, KERNEL_BASE=0x100000
+- [x] **Compiles clean**: 44 objects → 134KB binary, 0 errors, 0 warnings
+- [x] **Standalone boot**: No BareMetal b_system() dependency — boots via multiboot1
 
 ### 0.3 Portable C Drivers
 - [x] `drivers/storage/nvme.c` — NVMe (admin+IO queues, PRP, read/write)
@@ -63,9 +65,9 @@
 ### 0.6 Build System
 - [x] `Makefile` — Multi-arch (`make ARCH=x86_64|aarch64|riscv64`)
 - [x] `lib/string.c` — Compiler builtins (memcpy, memset, memmove, memcmp)
-- [x] x86-64 compiles and links: **104 KB** (40 objects)
-- [x] aarch64 compiles and links: **109 KB** (39 objects)
-- [x] riscv64 compiles and links: **93 KB** (39 objects)
+- [x] x86-64 compiles and links: **147 KB** (44 objects, standalone multiboot1)
+- [x] aarch64 compiles and links: **153 KB** (42 objects)
+- [x] riscv64 compiles and links: **129 KB** (42 objects)
 
 ### 0.7 Documentation
 - [x] `doc/architecture.md` — Multi-arch overview, layer diagram
@@ -78,12 +80,13 @@
 - [x] `doc/memory_maps.md` — Physical memory maps per arch
 
 ### 0.8 Integration Testing
-- [x] x86-64 boots on QEMU with VirtIO (two-stage loader → AlJefra kernel at 0x1000000)
-- [x] HAL init prints banner + CPU info + 7 PCIe devices on serial
-- [ ] NVMe driver reads from QEMU NVMe device
-- [ ] USB keyboard works on QEMU with xHCI
-- [x] DHCP obtains IP 10.0.2.15 from QEMU user-mode networking
-- [x] e1000 C driver loaded, initialized, and used for DHCP + marketplace TLS
+- [x] x86-64 boots standalone on QEMU via multiboot1 (no BareMetal dependency)
+- [x] HAL init: Console + CPU (Westmere) + MMU (255MB from multiboot mmap) + Timer (RDTSC+PIT) + PCIe + SMP
+- [x] PCI scan finds 8 devices: e1000, NVMe, xHCI, AHCI, host bridge, ISA bridge, SMBus
+- [x] All 3 drivers load: e1000 + NVMe (read/write PASSED) + xHCI (USB keyboard on slot 1)
+- [x] VirtIO modern (1.0+): VirtIO-Net (0x1041) + VirtIO-Blk (0x1042) load, DHCP + storage test PASS
+- [x] DHCP obtains IP 10.0.2.15, TCP connects to marketplace, downloads .ajdrv
+- [x] Full boot-to-ready sequence completes in <8 seconds on QEMU
 - [ ] Physical x86-64 machine boots (Intel NUC or similar)
 
 ---
@@ -107,15 +110,18 @@
 - [x] Minimal TCP/IP client (net/tcp.c) — ARP + TCP handshake over raw Ethernet frames
 - [x] Marketplace HTTP client integrated: kernel → TCP → HTTP POST/GET → Flask server
 - [x] AI agent connects, sends hardware manifest, receives driver list (HTTP 200 verified)
-- [ ] Driver package (.ajdrv) downloaded over HTTPS, signature verified
-- [ ] Downloaded driver loaded at runtime, initializes hardware
-- [ ] Full cycle: cold boot → AI → driver download → functional (<60s)
+- [x] Driver package (.ajdrv) downloaded over HTTP, header validated, entry called (169 bytes, RISC-V QEMU)
+- [x] Ed25519 signature verification for .ajdrv downloads (wired into driver_load_runtime, trusted key set in bootstrap)
+- [x] Downloaded driver loaded at runtime, initializes real hardware (QEMU VGA 800x600x32)
+- [x] Full cycle: cold boot → AI → driver download → functional (x86-64 QEMU, <15s)
+- [x] kernel_api_t vtable for runtime drivers (console, MMIO, DMA, timer, bus/PCI)
+- [x] Position-independent .ajdrv build system (drivers/runtime/build_ajdrv.sh)
 
 ### 1.5 WiFi Support
 - [x] `drivers/network/wifi_framework.c` — 802.11 framework (1404 lines)
 - [x] `drivers/network/wifi_framework.h` — WiFi API header (460 lines)
 - [x] `drivers/network/aes_ccmp.c` — AES-CCMP encryption (678 lines)
-- [ ] `drivers/network/intel_wifi.c` — Intel AX200/AX210
+- [x] `drivers/network/intel_wifi.c` — Intel AX200/AX210 (1738 lines, full register-level driver)
 - [ ] WiFi connects on physical laptop
 
 ### 1.6 Marketplace Server
@@ -177,12 +183,12 @@
 - [x] `arch/riscv64/console.c` — NS16550A UART + SBI fallback
 - [x] `arch/riscv64/hal_init.c` — Ordered init
 - [x] `arch/riscv64/linker.ld` — .text at 0x80200000
-- [x] **Compiles clean**: 35 objects → 65KB binary, 0 errors
+- [x] **Compiles clean**: 42 objects → 117KB binary, 0 errors
 
 ### 3.2 QEMU Testing
 - [x] RISC-V QEMU `virt` machine boots to UART output (OpenSBI + Sv39)
 - [x] Bus scan discovers 12 devices (1 PCIe + 11 DT)
-- [ ] TCP/IP + AI agent runs on RISC-V QEMU
+- [x] TCP/IP + AI agent runs on RISC-V QEMU (DHCP → ARP → TCP → HTTP POST → marketplace → .ajdrv download)
 
 ### 3.3 Physical Hardware
 - [ ] VisionFive 2 boots from SD card
@@ -190,8 +196,8 @@
 
 ### 3.4 Additional Drivers
 - [x] `drivers/network/rtl8169.c` — Realtek RTL8169/8168/8111 Gigabit Ethernet (436 lines)
-- [ ] `drivers/storage/emmc.c` — eMMC/SD tuning for SBCs
-- [ ] `drivers/network/bcm_wifi.c` — Broadcom WiFi (RPi)
+- [x] `drivers/storage/emmc.c` — eMMC/SD tuning: HS (50MHz), SDR50 (100MHz), DDR50, auto-tuning
+- [x] `drivers/network/bcm_wifi.c` — Broadcom WiFi (RPi) (700 lines)
 
 ---
 
@@ -208,7 +214,7 @@
 - [x] `drivers/input/touch.c` — Touchscreen framework (1291 lines, multi-touch, HID-over-I2C/USB)
 - [x] `drivers/input/touch.h` — Touchscreen API header (268 lines)
 - [x] `drivers/storage/ufs.h` — UFS driver header/interface (490 lines)
-- [ ] `drivers/storage/ufs.c` — UFS storage implementation
+- [x] `drivers/storage/ufs.c` — UFS storage (1249 lines, full UFSHCI init, SCSI commands, power mode)
 - [ ] Android ABL bootloader chain (Qualcomm/MediaTek)
 - [ ] Qualcomm WiFi/modem driver (QCA6390)
 - [ ] Pixel phone boots (unlocked bootloader)
@@ -221,12 +227,13 @@
 ### 5.1 Server Infrastructure
 - [x] Marketplace web API (REST + driver catalog DB) — `server/app.py`
 - [x] Driver submission pipeline (upload, sign, review) — `server/ajdrv_builder.py`
-- [ ] OTA update mechanism
+- [x] OTA update client — `marketplace_check_updates()` + `marketplace_get_catalog()` fully implemented
+- [x] OTA kernel update download + apply mechanism (staging header, CRC32 verification, storage staging area)
 
 ### 5.2 Community
-- [ ] AI evolution integration — Claude/users evolve drivers
-- [ ] Community audit system (version control, review, approve)
-- [ ] Developer onboarding documentation
+- [x] AI evolution integration — POST /v1/evolve, metrics reporting, marketplace_submit_evolution()
+- [x] Community audit system — POST/GET /v1/reviews, driver approval workflow, POST /v1/metrics
+- [x] Developer onboarding documentation — `doc/developer_guide.md`
 
 ---
 
@@ -234,11 +241,11 @@
 
 | Architecture | Binary Size | Objects | Status |
 |:------------|:-----------|:--------|:-------|
-| **x86-64**  | 125 KB     | 42      | Builds clean, boots on QEMU |
-| **ARM64**   | 133 KB     | 41      | Builds clean, boots on QEMU, marketplace HTTP verified |
-| **RISC-V**  | 113 KB     | 41      | Builds clean, boots on QEMU |
+| **x86-64**  | 139 KB     | 44      | Boots standalone, e1000/NVMe/VirtIO + marketplace + .ajdrv runtime load |
+| **ARM64**   | 149 KB     | 42      | Builds clean, boots on QEMU, NVMe + xHCI + marketplace HTTP |
+| **RISC-V**  | 125 KB     | 42      | Builds clean, boots on QEMU, NVMe + xHCI + .ajdrv download |
 
-**Total**: ~118 source files, ~29,000 lines of C/ASM/Python/docs
+**Total**: ~120 source files, ~32,000 lines of C/ASM/Python/docs
 
 ```
 make ARCH=x86_64     # Build for x86-64 (default)

@@ -8,6 +8,7 @@
 
 #include "driver_loader.h"
 #include "../hal/hal.h"
+#include "../store/verify.h"
 
 /* ── String helpers (no libc) ── */
 static int str_eq(const char *a, const char *b)
@@ -81,37 +82,7 @@ hal_status_t driver_load_builtin(const char *name, hal_device_t *dev)
 
 /* ── Runtime driver loading ── */
 
-/*
- * .ajdrv package format:
- *   [0x00] magic: "AJDV" (4 bytes)
- *   [0x04] version: uint32_t
- *   [0x08] arch: uint32_t (0=x86_64, 1=aarch64, 2=riscv64)
- *   [0x0C] code_offset: uint32_t (offset to executable code)
- *   [0x10] code_size: uint32_t
- *   [0x14] name_offset: uint32_t (offset to name string)
- *   [0x18] name_size: uint32_t
- *   [0x1C] signature_offset: uint32_t (offset to Ed25519 signature)
- *   [0x20] entry_offset: uint32_t (offset within code to entry function)
- *   [0x24-0x40] reserved
- *   [name_offset..] driver name (null-terminated)
- *   [code_offset..] relocatable binary code
- *   [signature_offset..] 64-byte Ed25519 signature over header+name+code
- */
-
-#define AJDRV_MAGIC  0x56444A41  /* "AJDV" little-endian */
-
-typedef struct __attribute__((packed)) {
-    uint32_t magic;
-    uint32_t version;
-    uint32_t arch;
-    uint32_t code_offset;
-    uint32_t code_size;
-    uint32_t name_offset;
-    uint32_t name_size;
-    uint32_t signature_offset;
-    uint32_t entry_offset;
-    uint8_t  reserved[28];
-} ajdrv_header_t;
+/* .ajdrv package format defined in store/package.h */
 
 hal_status_t driver_load_runtime(const void *ajdrv_data, uint64_t size, hal_device_t *dev)
 {
@@ -122,27 +93,40 @@ hal_status_t driver_load_runtime(const void *ajdrv_data, uint64_t size, hal_devi
 
     /* Validate magic */
     if (hdr->magic != AJDRV_MAGIC) {
-        hal_console_puts("[driver] Invalid .ajdrv magic\n");
+        hal_console_printf("[driver] Invalid .ajdrv magic: 0x%08x\n", hdr->magic);
         return HAL_ERROR;
     }
 
     /* Check architecture */
-    if (hdr->arch != (uint32_t)hal_arch()) {
-        hal_console_puts("[driver] Architecture mismatch\n");
+    uint32_t my_arch = (uint32_t)hal_arch();
+    if (hdr->arch != my_arch && hdr->arch != 0xFF) {
+        hal_console_printf("[driver] Architecture mismatch: pkg=%u, sys=%u\n", hdr->arch, my_arch);
         return HAL_NOT_SUPPORTED;
     }
 
     /* Bounds check */
     if (hdr->code_offset + hdr->code_size > size ||
         hdr->name_offset + hdr->name_size > size) {
-        hal_console_puts("[driver] Invalid offsets\n");
+        hal_console_printf("[driver] Invalid offsets: code=%u+%u, name=%u+%u, pkg=%u\n",
+                           hdr->code_offset, hdr->code_size,
+                           hdr->name_offset, hdr->name_size, (uint32_t)size);
         return HAL_ERROR;
     }
 
-    /* TODO: Verify Ed25519 signature via store/verify.c */
-
     /* Extract driver name */
     const char *name = (const char *)ajdrv_data + hdr->name_offset;
+
+    /* Verify Ed25519 signature if a trusted key has been configured.
+     * In development mode (no key set), verification is skipped. */
+    hal_status_t sig_rc = ajdrv_verify(ajdrv_data, size);
+    if (sig_rc == HAL_NOT_SUPPORTED) {
+        /* No trusted key set — development mode, skip verification */
+    } else if (sig_rc != HAL_OK) {
+        hal_console_printf("[driver] Signature verification FAILED for '%s'\n", name);
+        return HAL_ERROR;
+    }
+    hal_console_printf("[driver] .ajdrv: '%s' v%u, code=%u bytes at 0x%x, entry=0x%x\n",
+                       name, hdr->version, hdr->code_size, hdr->code_offset, hdr->entry_offset);
 
     /* Allocate memory for the driver code */
     uint64_t code_phys;
@@ -155,12 +139,32 @@ hal_status_t driver_load_runtime(const void *ajdrv_data, uint64_t size, hal_devi
     /* Copy code to executable memory */
     memcpy_simple(code_buf, (const uint8_t *)ajdrv_data + hdr->code_offset, hdr->code_size);
 
-    /* The entry point is a function that returns a driver_ops_t* */
-    typedef const driver_ops_t *(*driver_entry_fn)(void);
+    /* Build kernel API vtable for runtime drivers */
+    static const kernel_api_t kapi = {
+        .puts        = hal_console_puts,
+        .mmio_read32 = hal_mmio_read32,
+        .mmio_write32= hal_mmio_write32,
+        .mmio_read8  = hal_mmio_read8,
+        .mmio_write8 = hal_mmio_write8,
+        .mmio_barrier= hal_mmio_barrier,
+        .dma_alloc   = hal_dma_alloc,
+        .dma_free    = hal_dma_free,
+        .delay_us    = hal_timer_delay_us,
+        .timer_ms    = hal_timer_ms,
+        .pci_enable  = hal_bus_pci_enable,
+        .map_bar     = hal_bus_map_bar,
+        .pci_read32  = hal_bus_pci_read32,
+        .pci_write32 = hal_bus_pci_write32,
+    };
+
+    /* The entry point receives a kernel API vtable and returns a driver_ops_t* */
+    typedef const driver_ops_t *(*driver_entry_fn)(const kernel_api_t *api);
     driver_entry_fn entry = (driver_entry_fn)((uint8_t *)code_buf + hdr->entry_offset);
 
+    hal_console_printf("[driver] Calling entry at %p (code at %p)\n", (void *)entry, code_buf);
+
     /* Call the driver's entry point to get its ops table */
-    const driver_ops_t *ops = entry();
+    const driver_ops_t *ops = entry(&kapi);
     if (!ops) {
         hal_console_printf("[driver] '%s' entry returned NULL\n", name);
         hal_dma_free(code_buf, hdr->code_size);

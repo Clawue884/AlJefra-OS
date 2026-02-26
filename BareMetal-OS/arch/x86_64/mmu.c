@@ -1,19 +1,119 @@
 /* SPDX-License-Identifier: MIT */
-/* AlJefra OS — x86-64 MMU HAL Implementation
- * Page table manipulation for 4-level x86-64 paging (PML4/PDPT/PD/PT).
+/* AlJefra OS — x86-64 MMU HAL Implementation (Standalone)
  *
- * Pure64 bootloader sets up identity mapping for the first 64GB using 2MB pages.
- * The kernel also creates a higher-half mapping at 0xFFFF800000000000 for
- * dynamically allocated memory.  This HAL wraps both mechanisms.
+ * Page table manipulation for 4-level x86-64 paging (PML4/PDPT/PD/PT).
+ * boot.S sets up identity mapping for the first 4GB using 2MB pages.
+ *
+ * Memory detection uses the Multiboot1 info structure passed by the
+ * bootloader (QEMU, GRUB).  Falls back to 256 MB if no info available.
  */
 
 #include "../../hal/hal.h"
 
-/* BareMetal kernel API */
-extern uint64_t b_system(uint64_t function, uint64_t var1, uint64_t var2);
+/* -------------------------------------------------------------------------- */
+/* Multiboot1 info parsing                                                    */
+/* -------------------------------------------------------------------------- */
 
-/* b_system function codes */
-#define SYS_FREE_MEMORY  0x01
+/* Multiboot1 info flags */
+#define MB1_FLAG_MEM      (1u << 0)  /* mem_lower/mem_upper valid */
+#define MB1_FLAG_MMAP     (1u << 6)  /* mmap_length/mmap_addr valid */
+
+/* Multiboot1 bootloader magic */
+#define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
+
+/* Memory map entry types */
+#define MMAP_AVAILABLE 1
+#define MMAP_RESERVED  2
+
+/* boot.S saves the multiboot info pointer and magic here */
+extern uint64_t boot_mb_info_ptr;
+extern uint32_t boot_mb_magic;
+
+/* Cached total RAM */
+static uint64_t total_ram_bytes = 0;
+
+/* Memory map cache */
+#define MAX_MEM_REGIONS 32
+static hal_mem_region_t mem_regions[MAX_MEM_REGIONS];
+static uint32_t mem_region_count = 0;
+
+static void parse_multiboot1_mmap(void)
+{
+    uint64_t mb_addr = boot_mb_info_ptr;
+
+    if (mb_addr == 0 || boot_mb_magic != MULTIBOOT_BOOTLOADER_MAGIC) {
+        /* No valid multiboot info — assume 256 MB */
+        total_ram_bytes = 256ULL * 1024 * 1024;
+        mem_regions[0].base = 0;
+        mem_regions[0].size = total_ram_bytes;
+        mem_regions[0].type = 1;
+        mem_region_count = 1;
+        return;
+    }
+
+    /* Multiboot1 info structure layout:
+     *   offset  0: uint32_t flags
+     *   offset  4: uint32_t mem_lower  (KB below 1MB)
+     *   offset  8: uint32_t mem_upper  (KB above 1MB)
+     *   offset 44: uint32_t mmap_length
+     *   offset 48: uint32_t mmap_addr  */
+    volatile uint32_t *info = (volatile uint32_t *)(uintptr_t)mb_addr;
+    uint32_t flags = info[0];
+
+    total_ram_bytes = 0;
+    mem_region_count = 0;
+
+    if (flags & MB1_FLAG_MMAP) {
+        /* Parse the full memory map */
+        uint32_t mmap_length = info[44 / 4];
+        uint32_t mmap_addr   = info[48 / 4];
+        uint8_t *ptr = (uint8_t *)(uintptr_t)mmap_addr;
+        uint8_t *end = ptr + mmap_length;
+
+        while (ptr < end && mem_region_count < MAX_MEM_REGIONS) {
+            /* Each entry:
+             *   uint32_t size     (size of rest of entry, not including this field)
+             *   uint64_t addr
+             *   uint64_t len
+             *   uint32_t type     (1 = available) */
+            uint32_t entry_size = *(uint32_t *)ptr;
+            uint64_t base   = *(uint64_t *)(ptr + 4);
+            uint64_t length = *(uint64_t *)(ptr + 12);
+            uint32_t type   = *(uint32_t *)(ptr + 20);
+
+            mem_regions[mem_region_count].base = base;
+            mem_regions[mem_region_count].size = length;
+            mem_regions[mem_region_count].type = type;
+            mem_region_count++;
+
+            if (type == MMAP_AVAILABLE)
+                total_ram_bytes += length;
+
+            /* Advance by size + 4 (the size field itself) */
+            ptr += entry_size + 4;
+        }
+    } else if (flags & MB1_FLAG_MEM) {
+        /* Use simple mem_lower/mem_upper */
+        uint32_t mem_lower = info[4 / 4]; /* KB */
+        uint32_t mem_upper = info[8 / 4]; /* KB */
+
+        /* Lower memory (below 1MB) */
+        mem_regions[0].base = 0;
+        mem_regions[0].size = (uint64_t)mem_lower * 1024;
+        mem_regions[0].type = 1;
+
+        /* Upper memory (above 1MB) */
+        mem_regions[1].base = 0x100000;
+        mem_regions[1].size = (uint64_t)mem_upper * 1024;
+        mem_regions[1].type = 1;
+
+        mem_region_count = 2;
+        total_ram_bytes = (uint64_t)(mem_lower + mem_upper) * 1024;
+    }
+
+    if (total_ram_bytes == 0)
+        total_ram_bytes = 256ULL * 1024 * 1024;
+}
 
 /* -------------------------------------------------------------------------- */
 /* x86-64 page table constants                                                */
@@ -127,10 +227,8 @@ hal_status_t hal_mmu_init(void)
     for (uint32_t i = 0; i < BITMAP_SIZE; i++)
         page_bitmap[i] = 0;
 
-    /* The Pure64 bootloader has already set up:
-     * - Identity mapping for first 64GB (2MB pages)
-     * - Higher-half mapping at 0xFFFF800000000000 for kernel heap
-     * Nothing additional is needed for basic operation. */
+    /* Parse multiboot1 memory map for RAM detection */
+    parse_multiboot1_mmap();
 
     mmu_initialized = true;
     return HAL_OK;
@@ -282,19 +380,13 @@ uint32_t hal_mmu_get_memory_map(hal_mem_region_t *regions, uint32_t max)
     if (max == 0)
         return 0;
 
-    /* BareMetal/Pure64 stores the E820 memory map at physical address 0x6000.
-     * Each entry is 32 bytes: base(8) + length(8) + type(4) + padding(12).
-     * The count is at 0x5020 (from Pure64 info table). */
-    uint32_t count = *(volatile uint32_t *)(uintptr_t)0x5020;
+    uint32_t count = mem_region_count;
     if (count > max) count = max;
 
-    volatile uint8_t *e820 = (volatile uint8_t *)(uintptr_t)0x6000;
-
     for (uint32_t i = 0; i < count; i++) {
-        volatile uint64_t *entry = (volatile uint64_t *)(e820 + i * 32);
-        regions[i].base = entry[0];
-        regions[i].size = entry[1];
-        regions[i].type = (uint32_t)entry[2];
+        regions[i].base = mem_regions[i].base;
+        regions[i].size = mem_regions[i].size;
+        regions[i].type = mem_regions[i].type;
     }
 
     return count;
@@ -302,17 +394,27 @@ uint32_t hal_mmu_get_memory_map(hal_mem_region_t *regions, uint32_t max)
 
 uint64_t hal_mmu_total_ram(void)
 {
-    /* Pure64 stores total memory in MB at address 0x5010 (16-bit value).
-     * Alternatively, b_system(FREE_MEMORY) returns free MiB. */
-    uint16_t total_mb = *(volatile uint16_t *)(uintptr_t)0x5010;
-    return (uint64_t)total_mb * 1024ULL * 1024ULL;
+    return total_ram_bytes;
 }
 
 uint64_t hal_mmu_free_ram(void)
 {
-    /* b_system(FREE_MEMORY) returns free memory in MiB */
-    uint64_t free_mib = b_system(SYS_FREE_MEMORY, 0, 0);
-    return free_mib * 1024ULL * 1024ULL;
+    /* Estimate free RAM: total - kernel (2MB) - DMA (8MB) - page pool (16MB) */
+    uint64_t used = 2ULL * 1024 * 1024     /* Kernel + boot structures */
+                  + 8ULL * 1024 * 1024     /* DMA region (8-16 MB) */
+                  + 16ULL * 1024 * 1024;   /* Page pool (16-32 MB) */
+
+    /* Count allocated pages in our bitmap */
+    uint32_t alloc_pages = 0;
+    for (uint32_t i = 0; i < PAGE_POOL_PAGES; i++) {
+        if (bitmap_test(i))
+            alloc_pages++;
+    }
+    used += (uint64_t)alloc_pages * PAGE_SIZE_4K;
+
+    if (total_ram_bytes > used)
+        return total_ram_bytes - used;
+    return 0;
 }
 
 uint64_t hal_mmu_alloc_pages(uint32_t count)
