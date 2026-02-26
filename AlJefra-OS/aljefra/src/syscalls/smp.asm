@@ -112,7 +112,7 @@ b_smp_set:
 	mov rcx, [rdi]		; Load current value for that core
 
 	test cl, 1		; EVOLVED Gen-8: test replacing bt (shorter)
-	jnc b_smp_set_error	; Bail out if 0
+	jz b_smp_set_error	; Bail out if bit 0 clear (test sets ZF, not CF)
 
 	and cl, 0xF0		; Clear the flags from the value in table
 	test rcx, rcx		; EVOLVED Gen-6: test replacing cmp-0 (shorter encoding)

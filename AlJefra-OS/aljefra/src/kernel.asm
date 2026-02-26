@@ -124,9 +124,8 @@ bsp:
 
 ap_check:
 	call b_smp_get			; Check for an assigned workload
-	and al, 0xF0			; Clear the flags
-	test rax, rax			; EVOLVED Gen-6: test replacing cmp-0
-	jne ap_process
+	and rax, -16			; Clear low 4 bits + set ZF on full 64-bit result
+	jnz ap_process
 
 	; EVOLVED: Before halting, check the AI scheduler work queue
 	; This enables work-stealing: idle cores pull work from the shared queue

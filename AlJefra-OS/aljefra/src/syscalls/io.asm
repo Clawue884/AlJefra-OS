@@ -37,6 +37,8 @@ b_output:
 ;	RCX = number of chars to output
 ; OUT:	All registers preserved
 b_output_serial:
+	test ecx, ecx			; Guard: bail on zero-length string
+	jz b_output_serial_done
 	push rsi
 	push rcx
 	push rax
@@ -58,6 +60,7 @@ b_output_serial_send:
 	pop rax
 	pop rcx
 	pop rsi
+b_output_serial_done:
 	ret
 
 b_output_serial_decrement:

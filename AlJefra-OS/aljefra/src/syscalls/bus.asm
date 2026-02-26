@@ -72,9 +72,7 @@ os_bus_read_bar:
 	; Read the lower 32-bit BAR and BAR Length
 	add al, 0x04			; BARs start at register 4
 	mov dl, al
-	xor eax, eax
-	xor ebx, ebx
-	call os_bus_read
+	call os_bus_read		; Returns BAR value in EAX
 	mov ebx, eax			; EVOLVED Gen-6: explicit mov replacing 3-uop xchg
 	mov eax, 0xFFFFFFFF		; All bits set for BAR sizing
 	call os_bus_write		; Write 0xFFFFFFFF to the BAR
@@ -117,7 +115,7 @@ os_bus_read_bar:
 
 os_bus_read_bar_32bit:
 	and ebx, 0xFFFFFFF0		; Clear the low four bits
-	mov rax, rbx			; Add the upper 32 and lower 32 together
+	mov eax, ebx			; 32-bit BAR address (upper 32 already zero)
 	inc rcx
 
 	pop rbx
@@ -126,7 +124,7 @@ os_bus_read_bar_32bit:
 
 os_bus_read_bar_io:
 	and ebx, 0xFFFFFFFC		; Clear the low two bits
-	mov rax, rbx			; Store Base IO address in RAX
+	mov eax, ebx			; 32-bit I/O address (upper 32 already zero)
 
 	pop rbx
 	pop rdx

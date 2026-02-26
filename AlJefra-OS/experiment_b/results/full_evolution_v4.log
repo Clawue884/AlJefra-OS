@@ -1,0 +1,2680 @@
+=== FULL EVOLUTION CYCLE v4 — Thu Feb 26 07:05:45 PM UTC 2026 ===
+
+--- Starting io at Thu Feb 26 07:05:45 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: io ===
+  Region: 0x1005e4 - 0x102ed8 (1139 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. os_bus_read_bar                  51 instrs  [0x0656-0x06e4] (142 bytes)
+     2. os_debug_block                   33 instrs  [0x087f-0x08ea] (107 bytes)
+     3. os_debug_dump_al                 26 instrs  [0x0776-0x07c6] (80 bytes)
+     4. b_smp_set                        25 instrs  [0x0b46-0x0b80] (58 bytes)
+     5. b_net_tx                         23 instrs  [0x0a11-0x0a65] (84 bytes)
+     6. nextchar                         19 instrs  [0x07f1-0x0826] (53 bytes)
+     7. b_net_rx                         16 instrs  [0x0a68-0x0a9b] (51 bytes)
+     8. b_smp_reset                      16 instrs  [0x0a9e-0x0ad2] (52 bytes)
+     9. b_smp_wakeup                     16 instrs  [0x0ad2-0x0b06] (52 bytes)
+    10. os_debug_string                  16 instrs  [0x085c-0x087f] (35 bytes)
+    11. os_debug_dump_mem                15 instrs  [0x07c6-0x07ef] (41 bytes)
+    12. b_smp_wakeup_all                 14 instrs  [0x0b06-0x0b37] (49 bytes)
+    13. b_net_status                     14 instrs  [0x09b8-0x09e4] (44 bytes)
+    14. b_nvs_write_sector               13 instrs  [0x0950-0x0977] (39 bytes)
+    15. b_nvs_read_sector                13 instrs  [0x0914-0x093b] (39 bytes)
+    16. b_net_config                     13 instrs  [0x09e7-0x0a0c] (37 bytes)
+    17. os_debug_block_nextline          12 instrs  [0x08ea-0x0902] (24 bytes)
+    18. b_smp_busy                       11 instrs  [0x0bbb-0x0bd0] (21 bytes)
+    19. b_nvs_write                      10 instrs  [0x093b-0x0950] (21 bytes)
+    20. os_debug_dump_rax                 9 instrs  [0x072b-0x0753] (40 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 64 functions, 542 instructions
+
+  [1/64] os_bus_read_bar                51 instrs [0x0656-0x06e4] → 3K iters
+    [GPU] 1024 threads x 3000 iters = 3.1M evals | range [0x656-0x6e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 206 fitness=59.57
+    Security: fragility=16.4% worst=58.61 avg_muts=231 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.57 (+0.26, +0.44%)
+    ACCEPTED ✓ (cumulative fitness: 59.57)
+  [2/64] os_debug_block                 33 instrs [0x087f-0x08ea] → 2K iters
+    [GPU] 1024 threads x 2000 iters = 2.0M evals | range [0x87f-0x8ea]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 61 fitness=59.61
+    Security: fragility=16.0% worst=58.85 avg_muts=89 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.57 → 59.61 (+0.03, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.61)
+  [3/64] os_debug_dump_al               26 instrs [0x0776-0x07c6] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x776-0x7c6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 2 fitness=59.65
+    Security: fragility=16.0% worst=58.92 avg_muts=8 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.61 → 59.65 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.65)
+  [4/64] b_smp_set                      25 instrs [0x0b46-0x0b80] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xb46-0xb80]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.67
+    Security: fragility=14.9% worst=59.65 avg_muts=52 [FRAGILE!]
+    Optimize: 59.65 → 59.67 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.67)
+  [5/64] b_net_tx                       23 instrs [0x0a11-0x0a65] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa11-0xa65]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 818 fitness=59.77
+    Security: fragility=15.9% worst=58.98 avg_muts=46 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.67 → 59.77 (+0.10, +0.16%)
+    REJECTED (safety check failed)
+  [6/64] nextchar                       19 instrs [0x07f1-0x0826] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x7f1-0x826]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1011 fitness=59.81
+    Security: fragility=15.9% worst=58.98 avg_muts=43 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.67 → 59.81 (+0.14, +0.23%)
+    ACCEPTED ✓ (cumulative fitness: 59.81)
+  [7/64] b_net_rx                       16 instrs [0x0a68-0x0a9b] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa68-0xa9b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 90 fitness=59.86
+    Security: fragility=15.7% worst=59.12 avg_muts=44 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.81 → 59.86 (+0.05, +0.08%)
+    REJECTED (safety check failed)
+  [8/64] b_smp_reset                    16 instrs [0x0a9e-0x0ad2] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa9e-0xad2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 149 fitness=59.97
+    Security: fragility=15.6% worst=59.13 avg_muts=39 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.81 → 59.97 (+0.16, +0.27%)
+    ACCEPTED ✓ (cumulative fitness: 59.97)
+  [9/64] b_smp_wakeup                   16 instrs [0x0ad2-0x0b06] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xad2-0xb06]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 125 fitness=60.12
+    Security: fragility=15.4% worst=59.31 avg_muts=50 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.97 → 60.12 (+0.15, +0.25%)
+    ACCEPTED ✓ (cumulative fitness: 60.12)
+  [10/64] os_debug_string                16 instrs [0x085c-0x087f] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x85c-0x87f]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.12
+    Security: fragility=14.5% worst=59.90 avg_muts=38 [FRAGILE!]
+    no improvement (60.12)
+  [11/64] os_debug_dump_mem              15 instrs [0x07c6-0x07ef] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x7c6-0x7ef]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 142 fitness=60.19
+    Security: fragility=15.2% worst=59.42 avg_muts=22 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.12 → 60.19 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.19)
+  [12/64] b_smp_wakeup_all               14 instrs [0x0b06-0x0b37] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xb06-0xb37]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 61 fitness=60.31
+    Security: fragility=15.1% worst=59.50 avg_muts=22 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.19 → 60.31 (+0.11, +0.19%)
+    ACCEPTED ✓ (cumulative fitness: 60.31)
+  [13/64] b_net_status                   14 instrs [0x09b8-0x09e4] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x9b8-0x9e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 14 fitness=60.32
+    Security: fragility=14.1% worst=60.23 avg_muts=20 [FRAGILE!]
+    Optimize: 60.31 → 60.32 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.32)
+  [14/64] b_nvs_write_sector             13 instrs [0x0950-0x0977] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x950-0x977]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 34 fitness=60.37
+    Security: fragility=14.3% worst=60.10 avg_muts=11 [FRAGILE!]
+    Optimize: 60.32 → 60.37 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.37)
+  [15/64] b_nvs_read_sector              13 instrs [0x0914-0x093b] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x914-0x93b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 165 fitness=60.42
+    Security: fragility=14.2% worst=60.15 avg_muts=11 [FRAGILE!]
+    Optimize: 60.37 → 60.42 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.42)
+  [16/64] b_net_config                   13 instrs [0x09e7-0x0a0c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x9e7-0xa0c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=60.49
+    Security: fragility=14.1% worst=60.22 avg_muts=18 [FRAGILE!]
+    Optimize: 60.42 → 60.49 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.49)
+  [17/64] os_debug_block_nextline        12 instrs [0x08ea-0x0902] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x8ea-0x902]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=60.57
+    Security: fragility=14.7% worst=59.78 avg_muts=34 [FRAGILE!]
+    Optimize: 60.49 → 60.57 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.57)
+  [18/64] b_smp_busy                     11 instrs [0x0bbb-0x0bd0] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xbbb-0xbd0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.51
+    Security: fragility=13.6% worst=60.48 avg_muts=73 [FRAGILE!]
+    no improvement (60.51)
+  [19/64] b_nvs_write                    10 instrs [0x093b-0x0950] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x93b-0x950]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.50
+    Security: fragility=13.6% worst=60.50 avg_muts=16 [FRAGILE!]
+    no improvement (60.50)
+  [20/64] os_debug_dump_rax              9 instrs [0x072b-0x0753] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x72b-0x753]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 370 fitness=60.55
+    Security: fragility=14.6% worst=59.80 avg_muts=25 [FRAGILE!]
+    no improvement (60.55)
+  [21/64] b_smp_setflag                  9 instrs [0x0b9a-0x0bb8] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xb9a-0xbb8]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.50
+    Security: fragility=13.6% worst=60.50 avg_muts=27 [FRAGILE!]
+    no improvement (60.50)
+  [22/64] b_nvs_read                     9 instrs [0x0902-0x0914] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x902-0x914]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.50
+    Security: fragility=13.6% worst=60.50 avg_muts=6 [FRAGILE!]
+    no improvement (60.50)
+  [23/64] os_bus_cap_check               8 instrs [0x06f9-0x0710] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x6f9-0x710]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 23 fitness=60.55
+    Security: fragility=14.6% worst=59.77 avg_muts=28 [FRAGILE!]
+    no improvement (60.55)
+  [24/64] b_output_serial_next           8 instrs [0x0995-0x09a7] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x995-0x9a7]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.50
+    Security: fragility=13.6% worst=60.50 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.50)
+  [25/64] os_debug_space                 8 instrs [0x0848-0x085c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x848-0x85c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 6 fitness=60.54
+    Security: fragility=14.6% worst=59.80 avg_muts=5 [FRAGILE!]
+    no improvement (60.54)
+  [26/64] b_smp_busy_read                8 instrs [0x0bd0-0x0be6] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xbd0-0xbe6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=60.51
+    Security: fragility=13.9% worst=60.28 avg_muts=20 [FRAGILE!]
+    no improvement (60.51)
+  [27/64] b_output_serial_send           7 instrs [0x09a7-0x09b4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x9a7-0x9b4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 6 fitness=60.61
+    Security: fragility=14.6% worst=59.80 avg_muts=3 [FRAGILE!]
+    Optimize: 60.57 → 60.61 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 60.61)
+  [28/64] os_debug_dump_mem_done         7 instrs [0x082b-0x0834] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x82b-0x834]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.61
+    Security: fragility=13.5% worst=60.61 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.61)
+  [29/64] init_sys                       7 instrs [0x05f4-0x0619] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5f4-0x619]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.61
+    Security: fragility=14.5% worst=59.89 avg_muts=1 [FRAGILE!]
+    no improvement (60.61)
+  [30/64] b_smp_get                      6 instrs [0x0b87-0x0b9a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb87-0xb9a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.61
+    Security: fragility=13.5% worst=60.61 avg_muts=6 [FRAGILE!]
+    no improvement (60.61)
+  [31/64] os_bus_read_bar_32bit          6 instrs [0x06e4-0x06f0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6e4-0x6f0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 19 fitness=60.62
+    Security: fragility=13.9% worst=60.33 avg_muts=8 [FRAGILE!]
+    Optimize: 60.61 → 60.62 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.62)
+  [32/64] os_debug_newline               6 instrs [0x0834-0x0848] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x834-0x848]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=60.67
+    Security: fragility=14.4% worst=59.96 avg_muts=1 [FRAGILE!]
+    Optimize: 60.62 → 60.67 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.67)
+  [33/64] b_smp_set_error                6 instrs [0x0b80-0x0b87] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb80-0xb87]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.67
+    Security: fragility=13.4% worst=60.67 avg_muts=3 [FRAGILE!]
+    no improvement (60.67)
+  [34/64] os_bus_read_bar_io             5 instrs [0x06f0-0x06f9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6f0-0x6f9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.67
+    Security: fragility=13.4% worst=60.67 avg_muts=7 [FRAGILE!]
+    no improvement (60.67)
+  [35/64] os_debug_dump_eax              5 instrs [0x0753-0x0769] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x753-0x769]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 217 fitness=60.70
+    Security: fragility=14.4% worst=59.96 avg_muts=5 [FRAGILE!]
+    Optimize: 60.67 → 60.70 (+0.03, +0.05%)
+    ACCEPTED ✓ (cumulative fitness: 60.70)
+  [36/64] init_sys_done                  5 instrs [0x0619-0x062e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x619-0x62e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 345 fitness=60.77
+    Security: fragility=14.3% worst=59.99 avg_muts=3 [FRAGILE!]
+    Optimize: 60.70 → 60.77 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.77)
+  [37/64] b_net_config_end               5 instrs [0x0a0c-0x0a11] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa0c-0xa11]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.77
+    Security: fragility=13.2% worst=60.77 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.77)
+  [38/64] os_bus_cap_check_next          5 instrs [0x0710-0x071e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x710-0x71e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.77
+    Security: fragility=13.2% worst=60.77 avg_muts=8 [FRAGILE!]
+    no improvement (60.77)
+  [39/64] b_input                        4 instrs [0x0977-0x098a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x977-0x98a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 9 fitness=60.82
+    Security: fragility=14.2% worst=60.11 avg_muts=2 [FRAGILE!]
+    Optimize: 60.77 → 60.82 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.82)
+  [40/64] b_smp_get_id                   4 instrs [0x0b37-0x0b46] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb37-0xb46]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 8 fitness=60.90
+    Security: fragility=14.1% worst=60.18 avg_muts=4 [FRAGILE!]
+    Optimize: 60.82 → 60.90 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.90)
+  [41/64] os_bus_cap_check_done          3 instrs [0x0728-0x072b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x728-0x72b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.90
+    Security: fragility=13.1% worst=60.90 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.90)
+  [42/64] b_net_status_end               3 instrs [0x09e4-0x09e7] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x9e4-0x9e7]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.90
+    Security: fragility=13.1% worst=60.90 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.90)
+  [43/64] init_hid_done                  3 instrs [0x05e9-0x05f4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5e9-0x5f4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 12 fitness=60.98
+    Security: fragility=14.1% worst=60.18 avg_muts=4 [FRAGILE!]
+    Optimize: 60.90 → 60.98 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.98)
+  [44/64] os_bus_cap_check_next_offset   3 instrs [0x071e-0x0725] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x71e-0x725]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.98
+    Security: fragility=13.0% worst=60.98 avg_muts=6 [FRAGILE!]
+    no improvement (60.98)
+  [45/64] b_output_serial                3 instrs [0x0992-0x0995] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x992-0x995]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.98
+    Security: fragility=13.0% worst=60.98 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.98)
+  [46/64] b_net_tx_fail                  3 instrs [0x0a65-0x0a68] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa65-0xa68]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.98
+    Security: fragility=13.0% worst=60.98 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.98)
+  [47/64] os_debug_dump_ax               3 instrs [0x0769-0x0776] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x769-0x776]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 58 fitness=61.04
+    Security: fragility=14.0% worst=60.27 avg_muts=5 [FRAGILE!]
+    Optimize: 60.98 → 61.04 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 61.04)
+  [48/64] b_smp_setflag_done             3 instrs [0x0bb8-0x0bbb] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xbb8-0xbbb]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=61.04
+    Security: fragility=12.9% worst=61.04 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (61.04)
+  [49/64] b_net_rx_end                   3 instrs [0x0a9b-0x0a9e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa9b-0xa9e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=61.04
+    Security: fragility=12.9% worst=61.04 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (61.04)
+  [50/64] os_bus_cap_check_error         3 instrs [0x0725-0x0728] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x725-0x728]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=61.04
+    Security: fragility=12.9% worst=61.04 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (61.04)
+  [51/64] os_bus_write                   SKIP (too small)
+  [52/64] b_output_serial_decrement      SKIP (too small)
+  [53/64] os_bus_read                    SKIP (too small)
+  [54/64] b_smp_busy_no                  SKIP (too small)
+  [55/64] b_smp_busy_skip                SKIP (too small)
+  [56/64] b_input_no_key                 SKIP (too small)
+  [57/64] b_output                       SKIP (too small)
+  [58/64] nextline                       SKIP (too small)
+  [59/64] os_bus_write_pcie              SKIP (too small)
+  [60/64] os_debug_dump_mem_done_newline SKIP (too small)
+  [61/64] os_bus_write_pci               SKIP (too small)
+  [62/64] os_bus_read_pcie               SKIP (too small)
+  [63/64] os_bus_read_pci                SKIP (too small)
+  [64/64] init_hid                       SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 50 analyzed | 10 critical | 40 fragile | 0 robust | 10 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     os_bus_read_bar                fragility= 16.4% (51 instrs, 142 bytes)
+     os_debug_block                 fragility= 16.0% (33 instrs, 107 bytes)
+     os_debug_dump_al               fragility= 16.0% (26 instrs, 80 bytes)
+     b_net_tx                       fragility= 15.9% (23 instrs, 84 bytes)
+     nextchar                       fragility= 15.9% (19 instrs, 53 bytes)
+     b_net_rx                       fragility= 15.7% (16 instrs, 51 bytes)
+     b_smp_reset                    fragility= 15.6% (16 instrs, 52 bytes)
+     b_smp_wakeup                   fragility= 15.4% (16 instrs, 52 bytes)
+     os_debug_dump_mem              fragility= 15.2% (15 instrs, 41 bytes)
+     b_smp_wakeup_all               fragility= 15.1% (14 instrs, 49 bytes)
+
+  🟡 FRAGILE (5-15% fitness drop):
+     b_smp_set                      fragility= 14.9% (25 instrs, 58 bytes)
+     os_debug_block_nextline        fragility= 14.7% (12 instrs, 24 bytes)
+     os_bus_cap_check               fragility= 14.6% (8 instrs, 23 bytes)
+     os_debug_dump_rax              fragility= 14.6% (9 instrs, 40 bytes)
+     os_debug_space                 fragility= 14.6% (8 instrs, 20 bytes)
+     b_output_serial_send           fragility= 14.6% (7 instrs, 13 bytes)
+     os_debug_string                fragility= 14.5% (16 instrs, 35 bytes)
+     init_sys                       fragility= 14.5% (7 instrs, 37 bytes)
+     os_debug_newline               fragility= 14.4% (6 instrs, 20 bytes)
+     os_debug_dump_eax              fragility= 14.4% (5 instrs, 22 bytes)
+     init_sys_done                  fragility= 14.3% (5 instrs, 21 bytes)
+     b_nvs_write_sector             fragility= 14.3% (13 instrs, 39 bytes)
+     b_input                        fragility= 14.2% (4 instrs, 19 bytes)
+     b_nvs_read_sector              fragility= 14.2% (13 instrs, 39 bytes)
+     b_smp_get_id                   fragility= 14.1% (4 instrs, 15 bytes)
+     b_net_config                   fragility= 14.1% (13 instrs, 37 bytes)
+     init_hid_done                  fragility= 14.1% (3 instrs, 11 bytes)
+     b_net_status                   fragility= 14.1% (14 instrs, 44 bytes)
+     os_debug_dump_ax               fragility= 14.0% (3 instrs, 13 bytes)
+     b_smp_busy_read                fragility= 13.9% (8 instrs, 22 bytes)
+     os_bus_read_bar_32bit          fragility= 13.9% (6 instrs, 12 bytes)
+     b_smp_busy                     fragility= 13.6% (11 instrs, 21 bytes)
+     b_smp_setflag                  fragility= 13.6% (9 instrs, 30 bytes)
+     b_nvs_read                     fragility= 13.6% (9 instrs, 18 bytes)
+     b_nvs_write                    fragility= 13.6% (10 instrs, 21 bytes)
+     b_output_serial_next           fragility= 13.6% (8 instrs, 18 bytes)
+     os_debug_dump_mem_done         fragility= 13.5% (7 instrs, 9 bytes)
+     b_smp_get                      fragility= 13.5% (6 instrs, 19 bytes)
+     b_smp_set_error                fragility= 13.4% (6 instrs, 7 bytes)
+     os_bus_read_bar_io             fragility= 13.4% (5 instrs, 9 bytes)
+     b_net_config_end               fragility= 13.2% (5 instrs, 5 bytes)
+     os_bus_cap_check_next          fragility= 13.2% (5 instrs, 14 bytes)
+     os_bus_cap_check_done          fragility= 13.1% (3 instrs, 3 bytes)
+     b_net_status_end               fragility= 13.1% (3 instrs, 3 bytes)
+     b_output_serial                fragility= 13.0% (3 instrs, 3 bytes)
+     b_net_tx_fail                  fragility= 13.0% (3 instrs, 3 bytes)
+     os_bus_cap_check_next_offset   fragility= 13.0% (3 instrs, 7 bytes)
+     b_smp_setflag_done             fragility= 12.9% (3 instrs, 3 bytes)
+     b_net_rx_end                   fragility= 12.9% (3 instrs, 3 bytes)
+     os_bus_cap_check_error         fragility= 12.9% (3 instrs, 3 bytes)
+
+  ⚪ DEAD CODE (no mutations applied — possibly data or unreachable):
+     b_output_serial_next           (8 instrs, 18 bytes)
+     os_debug_dump_mem_done         (7 instrs, 9 bytes)
+     b_net_config_end               (5 instrs, 5 bytes)
+     os_bus_cap_check_done          (3 instrs, 3 bytes)
+     b_net_status_end               (3 instrs, 3 bytes)
+     b_output_serial                (3 instrs, 3 bytes)
+     b_net_tx_fail                  (3 instrs, 3 bytes)
+     b_smp_setflag_done             (3 instrs, 3 bytes)
+     b_net_rx_end                   (3 instrs, 3 bytes)
+     os_bus_cap_check_error         (3 instrs, 3 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ os_bus_read_bar                +0.44%
+    ✓ os_debug_block                 +0.06%
+    ✓ os_debug_dump_al               +0.07%
+    ✓ nextchar                       +0.23%
+    ✓ b_smp_reset                    +0.27%
+    ✓ b_smp_wakeup                   +0.25%
+    ✓ os_debug_dump_mem              +0.12%
+    ✓ b_smp_wakeup_all               +0.19%
+    ✓ b_smp_set                      +0.04%
+    ✓ os_debug_block_nextline        +0.13%
+    ✓ b_output_serial_send           +0.06%
+    ✓ os_debug_newline               +0.08%
+    ✓ os_debug_dump_eax              +0.05%
+    ✓ init_sys_done                  +0.12%
+    ✓ b_nvs_write_sector             +0.08%
+    ✓ b_input                        +0.08%
+    ✓ b_nvs_read_sector              +0.08%
+    ✓ b_smp_get_id                   +0.13%
+    ✓ b_net_config                   +0.12%
+    ✓ init_hid_done                  +0.13%
+    ✓ b_net_status                   +0.02%
+    ✓ os_debug_dump_ax               +0.08%
+    ✓ os_bus_read_bar_32bit          +0.02%
+
+  ── Final QEMU Validation ──
+  23 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: io ===
+  Functions analyzed: 64
+  Functions improved: 23
+  Final GPU fitness: 61.04
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting syscalls at Thu Feb 26 07:07:01 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: syscalls ===
+  Region: 0x10072b - 0x101251 (461 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. os_debug_block                   33 instrs  [0x087f-0x08ea] (107 bytes)
+     2. os_debug_dump_al                 26 instrs  [0x0776-0x07c6] (80 bytes)
+     3. b_smp_set                        25 instrs  [0x0b46-0x0b80] (58 bytes)
+     4. b_net_tx                         23 instrs  [0x0a11-0x0a65] (84 bytes)
+     5. nextchar                         19 instrs  [0x07f1-0x0826] (53 bytes)
+     6. b_net_rx                         16 instrs  [0x0a68-0x0a9b] (51 bytes)
+     7. b_smp_reset                      16 instrs  [0x0a9e-0x0ad2] (52 bytes)
+     8. b_smp_wakeup                     16 instrs  [0x0ad2-0x0b06] (52 bytes)
+     9. os_debug_string                  16 instrs  [0x085c-0x087f] (35 bytes)
+    10. b_smp_read_lock                  16 instrs  [0x0c0e-0x0c37] (41 bytes)
+    11. os_debug_dump_mem                15 instrs  [0x07c6-0x07ef] (41 bytes)
+    12. b_net_status                     14 instrs  [0x09b8-0x09e4] (44 bytes)
+    13. b_smp_wakeup_all                 14 instrs  [0x0b06-0x0b37] (49 bytes)
+    14. b_nvs_read_sector                13 instrs  [0x0914-0x093b] (39 bytes)
+    15. b_net_config                     13 instrs  [0x09e7-0x0a0c] (37 bytes)
+    16. b_nvs_write_sector               13 instrs  [0x0950-0x0977] (39 bytes)
+    17. os_debug_block_nextline          12 instrs  [0x08ea-0x0902] (24 bytes)
+    18. b_smp_busy                       11 instrs  [0x0bbb-0x0bd0] (21 bytes)
+    19. b_nvs_write                      10 instrs  [0x093b-0x0950] (21 bytes)
+    20. b_smp_write_lock                 10 instrs  [0x0c3c-0x0c5c] (32 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 64 functions, 497 instructions
+
+  [1/64] os_debug_block                 33 instrs [0x087f-0x08ea] → 2K iters
+    [GPU] 1024 threads x 2000 iters = 2.0M evals | range [0x87f-0x8ea]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 13 fitness=59.34
+    Security: fragility=16.4% worst=58.59 avg_muts=89 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.34 (+0.03, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.34)
+  [2/64] os_debug_dump_al               26 instrs [0x0776-0x07c6] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x776-0x7c6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 4 fitness=59.38
+    Security: fragility=16.3% worst=58.66 avg_muts=8 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.34 → 59.38 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.38)
+  [3/64] b_smp_set                      25 instrs [0x0b46-0x0b80] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xb46-0xb80]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=59.40
+    Security: fragility=15.3% worst=59.38 avg_muts=52 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.38 → 59.40 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.40)
+  [4/64] b_net_tx                       23 instrs [0x0a11-0x0a65] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa11-0xa65]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 110 fitness=59.50
+    Security: fragility=16.2% worst=58.72 avg_muts=45 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.40 → 59.50 (+0.10, +0.16%)
+    REJECTED (safety check failed)
+  [5/64] nextchar                       19 instrs [0x07f1-0x0826] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x7f1-0x826]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 463 fitness=59.56
+    Security: fragility=16.2% worst=58.73 avg_muts=44 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.40 → 59.56 (+0.16, +0.27%)
+    ACCEPTED ✓ (cumulative fitness: 59.56)
+  [6/64] b_net_rx                       16 instrs [0x0a68-0x0a9b] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa68-0xa9b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=59.59
+    Security: fragility=15.9% worst=58.88 avg_muts=43 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.56 → 59.59 (+0.03, +0.05%)
+    REJECTED (safety check failed)
+  [7/64] b_smp_reset                    16 instrs [0x0a9e-0x0ad2] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xa9e-0xad2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 197 fitness=59.70
+    Security: fragility=15.9% worst=58.89 avg_muts=39 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.56 → 59.70 (+0.14, +0.23%)
+    ACCEPTED ✓ (cumulative fitness: 59.70)
+  [8/64] b_smp_wakeup                   16 instrs [0x0ad2-0x0b06] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xad2-0xb06]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 115 fitness=59.85
+    Security: fragility=15.7% worst=59.03 avg_muts=49 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.70 → 59.85 (+0.15, +0.25%)
+    ACCEPTED ✓ (cumulative fitness: 59.85)
+  [9/64] os_debug_string                16 instrs [0x085c-0x087f] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x85c-0x87f]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.85
+    Security: fragility=14.8% worst=59.63 avg_muts=38 [FRAGILE!]
+    no improvement (59.85)
+  [10/64] b_smp_read_lock                16 instrs [0x0c0e-0x0c37] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xc0e-0xc37]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 349 fitness=60.01
+    Security: fragility=15.5% worst=59.18 avg_muts=64 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.85 → 60.01 (+0.16, +0.27%)
+    ACCEPTED ✓ (cumulative fitness: 60.01)
+  [11/64] os_debug_dump_mem              15 instrs [0x07c6-0x07ef] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x7c6-0x7ef]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 62 fitness=60.07
+    Security: fragility=15.2% worst=59.30 avg_muts=22 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.01 → 60.07 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 60.07)
+  [12/64] b_net_status                   14 instrs [0x09b8-0x09e4] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x9b8-0x9e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=60.08
+    Security: fragility=14.2% worst=60.00 avg_muts=20 [FRAGILE!]
+    Optimize: 60.07 → 60.08 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.08)
+  [13/64] b_smp_wakeup_all               14 instrs [0x0b06-0x0b37] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xb06-0xb37]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 54 fitness=60.20
+    Security: fragility=15.0% worst=59.42 avg_muts=22 [FRAGILE!]
+    Optimize: 60.08 → 60.20 (+0.11, +0.19%)
+    ACCEPTED ✓ (cumulative fitness: 60.20)
+  [14/64] b_nvs_read_sector              13 instrs [0x0914-0x093b] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x914-0x93b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 367 fitness=60.25
+    Security: fragility=14.2% worst=59.98 avg_muts=11 [FRAGILE!]
+    Optimize: 60.20 → 60.25 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.25)
+  [15/64] b_net_config                   13 instrs [0x09e7-0x0a0c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x9e7-0xa0c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 6 fitness=60.32
+    Security: fragility=14.1% worst=60.05 avg_muts=18 [FRAGILE!]
+    Optimize: 60.25 → 60.32 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.32)
+  [16/64] b_nvs_write_sector             13 instrs [0x0950-0x0977] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x950-0x977]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 109 fitness=60.37
+    Security: fragility=14.0% worst=60.10 avg_muts=11 [FRAGILE!]
+    Optimize: 60.32 → 60.37 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.37)
+  [17/64] os_debug_block_nextline        12 instrs [0x08ea-0x0902] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x8ea-0x902]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 8 fitness=60.45
+    Security: fragility=14.6% worst=59.66 avg_muts=33 [FRAGILE!]
+    Optimize: 60.37 → 60.45 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.45)
+  [18/64] b_smp_busy                     11 instrs [0x0bbb-0x0bd0] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xbbb-0xbd0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.6% worst=60.36 avg_muts=73 [FRAGILE!]
+    no improvement (60.38)
+  [19/64] b_nvs_write                    10 instrs [0x093b-0x0950] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x93b-0x950]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.5% worst=60.38 avg_muts=16 [FRAGILE!]
+    no improvement (60.38)
+  [20/64] b_smp_write_lock               10 instrs [0x0c3c-0x0c5c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xc3c-0xc5c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 2 fitness=60.41
+    Security: fragility=14.6% worst=59.67 avg_muts=7 [FRAGILE!]
+    no improvement (60.41)
+  [21/64] b_nvs_read                     9 instrs [0x0902-0x0914] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x902-0x914]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.5% worst=60.38 avg_muts=6 [FRAGILE!]
+    no improvement (60.38)
+  [22/64] os_debug_dump_rax              9 instrs [0x072b-0x0753] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x72b-0x753]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 941 fitness=60.43
+    Security: fragility=14.5% worst=59.68 avg_muts=24 [FRAGILE!]
+    no improvement (60.43)
+  [23/64] b_smp_setflag                  9 instrs [0x0b9a-0x0bb8] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xb9a-0xbb8]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.5% worst=60.38 avg_muts=27 [FRAGILE!]
+    no improvement (60.38)
+  [24/64] b_smp_busy_read                8 instrs [0x0bd0-0x0be6] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0xbd0-0xbe6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.9% worst=60.16 avg_muts=20 [FRAGILE!]
+    no improvement (60.38)
+  [25/64] os_debug_space                 8 instrs [0x0848-0x085c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x848-0x85c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 5 fitness=60.42
+    Security: fragility=14.5% worst=59.68 avg_muts=5 [FRAGILE!]
+    no improvement (60.42)
+  [26/64] b_output_serial_next           8 instrs [0x0995-0x09a7] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x995-0x9a7]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.38
+    Security: fragility=13.5% worst=60.38 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.38)
+  [27/64] b_output_serial_send           7 instrs [0x09a7-0x09b4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x9a7-0x9b4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 4 fitness=60.48
+    Security: fragility=14.5% worst=59.68 avg_muts=3 [FRAGILE!]
+    Optimize: 60.45 → 60.48 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 60.48)
+  [28/64] os_debug_dump_mem_done         7 instrs [0x082b-0x0834] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x82b-0x834]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.48
+    Security: fragility=13.4% worst=60.48 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.48)
+  [29/64] b_smp_get                      6 instrs [0x0b87-0x0b9a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb87-0xb9a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.48
+    Security: fragility=13.4% worst=60.48 avg_muts=6 [FRAGILE!]
+    no improvement (60.48)
+  [30/64] os_debug_newline               6 instrs [0x0834-0x0848] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x834-0x848]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 7 fitness=60.54
+    Security: fragility=13.6% worst=60.32 avg_muts=1 [FRAGILE!]
+    Optimize: 60.48 → 60.54 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.54)
+  [31/64] b_smp_set_error                6 instrs [0x0b80-0x0b87] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb80-0xb87]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.54
+    Security: fragility=13.3% worst=60.54 avg_muts=3 [FRAGILE!]
+    no improvement (60.54)
+  [32/64] b_net_config_end               5 instrs [0x0a0c-0x0a11] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa0c-0xa11]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.54
+    Security: fragility=13.3% worst=60.54 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.54)
+  [33/64] os_debug_dump_eax              5 instrs [0x0753-0x0769] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x753-0x769]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 115 fitness=60.56
+    Security: fragility=14.3% worst=59.83 avg_muts=5 [FRAGILE!]
+    Optimize: 60.54 → 60.56 (+0.03, +0.05%)
+    ACCEPTED ✓ (cumulative fitness: 60.56)
+  [34/64] b_smp_busy_end                 4 instrs [0x0bf3-0x0bf7] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xbf3-0xbf7]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.56
+    Security: fragility=13.3% worst=60.56 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.56)
+  [35/64] b_smp_lock                     4 instrs [0x0bf8-0x0c01] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xbf8-0xc01]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.56
+    Security: fragility=13.3% worst=60.55 avg_muts=17 [FRAGILE!]
+    no improvement (60.56)
+  [36/64] b_smp_lock_spin                4 instrs [0x0bf8-0x0c01] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xbf8-0xc01]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.56
+    Security: fragility=13.3% worst=60.55 avg_muts=17 [FRAGILE!]
+    no improvement (60.56)
+  [37/64] b_input                        4 instrs [0x0977-0x098a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x977-0x98a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 19 fitness=60.61
+    Security: fragility=14.2% worst=59.90 avg_muts=2 [FRAGILE!]
+    Optimize: 60.56 → 60.61 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.61)
+  [38/64] b_smp_get_id                   4 instrs [0x0b37-0x0b46] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xb37-0xb46]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=60.69
+    Security: fragility=14.1% worst=59.97 avg_muts=4 [FRAGILE!]
+    Optimize: 60.61 → 60.69 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.69)
+  [39/64] b_net_rx_end                   3 instrs [0x0a9b-0x0a9e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa9b-0xa9e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.69
+    Security: fragility=13.1% worst=60.69 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.69)
+  [40/64] os_debug_dump_ax               3 instrs [0x0769-0x0776] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x769-0x776]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 7 fitness=60.74
+    Security: fragility=14.1% worst=59.99 avg_muts=5 [FRAGILE!]
+    Optimize: 60.69 → 60.74 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.74)
+  [41/64] b_net_status_end               3 instrs [0x09e4-0x09e7] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x9e4-0x9e7]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.74
+    Security: fragility=13.0% worst=60.74 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.74)
+  [42/64] b_net_tx_fail                  3 instrs [0x0a65-0x0a68] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xa65-0xa68]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.74
+    Security: fragility=13.0% worst=60.74 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.74)
+  [43/64] b_smp_lock_try                 3 instrs [0x0c01-0x0c0a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xc01-0xc0a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.74
+    Security: fragility=13.0% worst=60.74 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.74)
+  [44/64] b_smp_setflag_done             3 instrs [0x0bb8-0x0bbb] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xbb8-0xbbb]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.74
+    Security: fragility=13.0% worst=60.74 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.74)
+  [45/64] b_output_serial                3 instrs [0x0992-0x0995] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x992-0x995]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.74
+    Security: fragility=13.0% worst=60.74 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.74)
+  [46/64] b_output_serial_decrement      SKIP (too small)
+  [47/64] b_smp_unlock                   SKIP (too small)
+  [48/64] b_smp_busy_no                  SKIP (too small)
+  [49/64] b_smp_read_unlock              SKIP (too small)
+  [50/64] b_smp_busy_skip                SKIP (too small)
+  [51/64] b_smp_write_unlock             SKIP (too small)
+  [52/64] b_gpu_status                   SKIP (too small)
+  [53/64] b_gpu_compute                  SKIP (too small)
+  [54/64] b_gpu_compute_done             SKIP (too small)
+  [55/64] b_gpu_mem_alloc                SKIP (too small)
+  [56/64] b_gpu_mem_free                 SKIP (too small)
+  [57/64] b_gpu_mem_copy_to              SKIP (too small)
+  [58/64] b_gpu_mem_copy_from            SKIP (too small)
+  [59/64] b_smp_busy_yes                 SKIP (too small)
+  [60/64] nextline                       SKIP (too small)
+  [61/64] b_smp_config                   SKIP (too small)
+  [62/64] b_input_no_key                 SKIP (too small)
+  [63/64] b_output                       SKIP (too small)
+  [64/64] os_debug_dump_mem_done_newline SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 45 analyzed | 10 critical | 35 fragile | 0 robust | 10 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     os_debug_block                 fragility= 16.4% (33 instrs, 107 bytes)
+     os_debug_dump_al               fragility= 16.3% (26 instrs, 80 bytes)
+     b_net_tx                       fragility= 16.2% (23 instrs, 84 bytes)
+     nextchar                       fragility= 16.2% (19 instrs, 53 bytes)
+     b_net_rx                       fragility= 15.9% (16 instrs, 51 bytes)
+     b_smp_reset                    fragility= 15.9% (16 instrs, 52 bytes)
+     b_smp_wakeup                   fragility= 15.7% (16 instrs, 52 bytes)
+     b_smp_read_lock                fragility= 15.5% (16 instrs, 41 bytes)
+     b_smp_set                      fragility= 15.3% (25 instrs, 58 bytes)
+     os_debug_dump_mem              fragility= 15.2% (15 instrs, 41 bytes)
+
+  🟡 FRAGILE (5-15% fitness drop):
+     b_smp_wakeup_all               fragility= 15.0% (14 instrs, 49 bytes)
+     os_debug_string                fragility= 14.8% (16 instrs, 35 bytes)
+     os_debug_block_nextline        fragility= 14.6% (12 instrs, 24 bytes)
+     b_smp_write_lock               fragility= 14.6% (10 instrs, 32 bytes)
+     os_debug_dump_rax              fragility= 14.5% (9 instrs, 40 bytes)
+     os_debug_space                 fragility= 14.5% (8 instrs, 20 bytes)
+     b_output_serial_send           fragility= 14.5% (7 instrs, 13 bytes)
+     os_debug_dump_eax              fragility= 14.3% (5 instrs, 22 bytes)
+     b_input                        fragility= 14.2% (4 instrs, 19 bytes)
+     b_nvs_read_sector              fragility= 14.2% (13 instrs, 39 bytes)
+     b_net_status                   fragility= 14.2% (14 instrs, 44 bytes)
+     b_smp_get_id                   fragility= 14.1% (4 instrs, 15 bytes)
+     os_debug_dump_ax               fragility= 14.1% (3 instrs, 13 bytes)
+     b_net_config                   fragility= 14.1% (13 instrs, 37 bytes)
+     b_nvs_write_sector             fragility= 14.0% (13 instrs, 39 bytes)
+     b_smp_busy_read                fragility= 13.9% (8 instrs, 22 bytes)
+     os_debug_newline               fragility= 13.6% (6 instrs, 20 bytes)
+     b_smp_busy                     fragility= 13.6% (11 instrs, 21 bytes)
+     b_nvs_write                    fragility= 13.5% (10 instrs, 21 bytes)
+     b_output_serial_next           fragility= 13.5% (8 instrs, 18 bytes)
+     b_smp_setflag                  fragility= 13.5% (9 instrs, 30 bytes)
+     b_nvs_read                     fragility= 13.5% (9 instrs, 18 bytes)
+     b_smp_get                      fragility= 13.4% (6 instrs, 19 bytes)
+     os_debug_dump_mem_done         fragility= 13.4% (7 instrs, 9 bytes)
+     b_smp_set_error                fragility= 13.3% (6 instrs, 7 bytes)
+     b_net_config_end               fragility= 13.3% (5 instrs, 5 bytes)
+     b_smp_lock_spin                fragility= 13.3% (4 instrs, 9 bytes)
+     b_smp_lock                     fragility= 13.3% (4 instrs, 9 bytes)
+     b_smp_busy_end                 fragility= 13.3% (4 instrs, 4 bytes)
+     b_net_rx_end                   fragility= 13.1% (3 instrs, 3 bytes)
+     b_net_status_end               fragility= 13.0% (3 instrs, 3 bytes)
+     b_net_tx_fail                  fragility= 13.0% (3 instrs, 3 bytes)
+     b_smp_lock_try                 fragility= 13.0% (3 instrs, 9 bytes)
+     b_smp_setflag_done             fragility= 13.0% (3 instrs, 3 bytes)
+     b_output_serial                fragility= 13.0% (3 instrs, 3 bytes)
+
+  ⚪ DEAD CODE (no mutations applied — possibly data or unreachable):
+     b_output_serial_next           (8 instrs, 18 bytes)
+     os_debug_dump_mem_done         (7 instrs, 9 bytes)
+     b_net_config_end               (5 instrs, 5 bytes)
+     b_smp_busy_end                 (4 instrs, 4 bytes)
+     b_net_rx_end                   (3 instrs, 3 bytes)
+     b_net_status_end               (3 instrs, 3 bytes)
+     b_net_tx_fail                  (3 instrs, 3 bytes)
+     b_smp_lock_try                 (3 instrs, 9 bytes)
+     b_smp_setflag_done             (3 instrs, 3 bytes)
+     b_output_serial                (3 instrs, 3 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ os_debug_block                 +0.06%
+    ✓ os_debug_dump_al               +0.07%
+    ✓ nextchar                       +0.27%
+    ✓ b_smp_reset                    +0.23%
+    ✓ b_smp_wakeup                   +0.25%
+    ✓ b_smp_read_lock                +0.27%
+    ✓ b_smp_set                      +0.04%
+    ✓ os_debug_dump_mem              +0.09%
+    ✓ b_smp_wakeup_all               +0.19%
+    ✓ os_debug_block_nextline        +0.13%
+    ✓ b_output_serial_send           +0.06%
+    ✓ os_debug_dump_eax              +0.05%
+    ✓ b_input                        +0.08%
+    ✓ b_nvs_read_sector              +0.08%
+    ✓ b_net_status                   +0.02%
+    ✓ b_smp_get_id                   +0.13%
+    ✓ os_debug_dump_ax               +0.08%
+    ✓ b_net_config                   +0.12%
+    ✓ b_nvs_write_sector             +0.08%
+    ✓ os_debug_newline               +0.08%
+
+  ── Final QEMU Validation ──
+  20 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: syscalls ===
+  Functions analyzed: 64
+  Functions improved: 20
+  Final GPU fitness: 60.74
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting smp at Thu Feb 26 07:08:07 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: smp ===
+  Region: 0x100120 - 0x100c62 (192 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. init_64                          58 instrs  [0x01b9-0x02b2] (249 bytes)
+     2. os_bus_read_bar                  51 instrs  [0x0656-0x06e4] (142 bytes)
+     3. bsp                              21 instrs  [0x0148-0x0186] (62 bytes)
+     4. make_interrupt_gate_stubs        19 instrs  [0x02e3-0x0339] (86 bytes)
+     5. init_bus_pci_probe_found         15 instrs  [0x0469-0x048c] (35 bytes)
+     6. init_64_vga                      15 instrs  [0x034b-0x038e] (67 bytes)
+     7. create_gate                      14 instrs  [0x03bc-0x03d9] (29 bytes)
+     8. init_bus_pcie_probe_found        14 instrs  [0x0409-0x042a] (33 bytes)
+     9. init_bus_end                     10 instrs  [0x048d-0x04b8] (43 bytes)
+    10. ap_clear                         10 instrs  [0x0120-0x0148] (40 bytes)
+    11. init_bus_pci                      8 instrs  [0x0437-0x0453] (28 bytes)
+    12. init_nvs_check_bus                8 instrs  [0x04d0-0x04e9] (25 bytes)
+    13. init_net_check_bus                8 instrs  [0x0530-0x054d] (29 bytes)
+    14. init_net_probe_find_driver        8 instrs  [0x054d-0x056a] (29 bytes)
+    15. init_bus                          8 instrs  [0x03d9-0x03ff] (38 bytes)
+    16. os_bus_cap_check                  8 instrs  [0x06f9-0x0710] (23 bytes)
+    17. make_exception_gates              7 instrs  [0x02c9-0x02e3] (26 bytes)
+    18. next_ap                           7 instrs  [0x038e-0x03a2] (20 bytes)
+    19. init_net_probe_found_finish       7 instrs  [0x05a9-0x05cf] (38 bytes)
+    20. init_sys                          7 instrs  [0x05f4-0x0619] (37 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 64 functions, 447 instructions
+
+  [1/64] init_64                        58 instrs [0x01b9-0x02b2] → 3K iters
+    [GPU] 1024 threads x 3000 iters = 3.1M evals | range [0x1b9-0x2b2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 154 fitness=59.35
+    Security: fragility=16.3% worst=58.64 avg_muts=56 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.35 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.35)
+  [2/64] os_bus_read_bar                51 instrs [0x0656-0x06e4] → 3K iters
+    [GPU] 1024 threads x 3000 iters = 3.1M evals | range [0x656-0x6e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 654 fitness=59.59
+    Security: fragility=16.3% worst=58.65 avg_muts=232 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.35 → 59.59 (+0.24, +0.41%)
+    ACCEPTED ✓ (cumulative fitness: 59.59)
+  [3/64] bsp                            21 instrs [0x0148-0x0186] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x148-0x186]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 60 fitness=59.66
+    Security: fragility=16.0% worst=58.92 avg_muts=94 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.59 → 59.66 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 59.66)
+  [4/64] make_interrupt_gate_stubs      19 instrs [0x02e3-0x0339] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x2e3-0x339]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 306 fitness=59.69
+    Security: fragility=15.8% worst=58.94 avg_muts=21 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.66 → 59.69 (+0.03, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.69)
+  [5/64] init_bus_pci_probe_found       15 instrs [0x0469-0x048c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x469-0x48c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 89 fitness=59.73
+    Security: fragility=15.8% worst=58.98 avg_muts=26 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.69 → 59.73 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.73)
+  [6/64] init_64_vga                    15 instrs [0x034b-0x038e] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x34b-0x38e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 278 fitness=59.80
+    Security: fragility=15.7% worst=59.04 avg_muts=15 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.73 → 59.80 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 59.80)
+  [7/64] create_gate                    14 instrs [0x03bc-0x03d9] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x3bc-0x3d9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 11 fitness=59.82
+    Security: fragility=15.0% worst=59.56 avg_muts=19 [FRAGILE!]
+    Optimize: 59.80 → 59.82 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.82)
+  [8/64] init_bus_pcie_probe_found      14 instrs [0x0409-0x042a] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x409-0x42a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=59.84
+    Security: fragility=15.6% worst=59.14 avg_muts=27 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.82 → 59.84 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.84)
+  [9/64] init_bus_end                   10 instrs [0x048d-0x04b8] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x48d-0x4b8]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 115 fitness=59.94
+    Security: fragility=15.5% worst=59.14 avg_muts=20 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.84 → 59.94 (+0.11, +0.18%)
+    ACCEPTED ✓ (cumulative fitness: 59.94)
+  [10/64] ap_clear                       10 instrs [0x0120-0x0148] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x120-0x148]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 15 fitness=59.96
+    Security: fragility=14.7% worst=59.73 avg_muts=19 [FRAGILE!]
+    Optimize: 59.94 → 59.96 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.96)
+  [11/64] init_bus_pci                   8 instrs [0x0437-0x0453] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x437-0x453]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.96
+    Security: fragility=14.4% worst=59.92 avg_muts=4 [FRAGILE!]
+    no improvement (59.96)
+  [12/64] init_nvs_check_bus             8 instrs [0x04d0-0x04e9] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x4d0-0x4e9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.96
+    Security: fragility=14.4% worst=59.96 avg_muts=13 [FRAGILE!]
+    no improvement (59.96)
+  [13/64] init_net_check_bus             8 instrs [0x0530-0x054d] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x530-0x54d]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.96
+    Security: fragility=14.4% worst=59.96 avg_muts=11 [FRAGILE!]
+    no improvement (59.96)
+  [14/64] init_net_probe_find_driver     8 instrs [0x054d-0x056a] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x54d-0x56a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 4 fitness=59.97
+    Security: fragility=14.4% worst=59.93 avg_muts=19 [FRAGILE!]
+    Optimize: 59.96 → 59.97 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.97)
+  [15/64] init_bus                       8 instrs [0x03d9-0x03ff] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x3d9-0x3ff]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 2 fitness=59.99
+    Security: fragility=15.4% worst=59.28 avg_muts=9 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.97 → 59.99 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.99)
+  [16/64] os_bus_cap_check               8 instrs [0x06f9-0x0710] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x6f9-0x710]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 901 fitness=60.04
+    Security: fragility=15.4% worst=59.27 avg_muts=28 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.99 → 60.04 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.04)
+  [17/64] make_exception_gates           7 instrs [0x02c9-0x02e3] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x2c9-0x2e3]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 14 fitness=60.05
+    Security: fragility=15.3% worst=59.35 avg_muts=3 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.04 → 60.05 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.05)
+  [18/64] next_ap                        7 instrs [0x038e-0x03a2] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x38e-0x3a2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 335 fitness=60.07
+    Security: fragility=14.3% worst=60.01 avg_muts=2 [FRAGILE!]
+    Optimize: 60.05 → 60.07 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 60.07)
+  [19/64] init_net_probe_found_finish    7 instrs [0x05a9-0x05cf] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5a9-0x5cf]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.07
+    Security: fragility=14.3% worst=60.05 avg_muts=2 [FRAGILE!]
+    no improvement (60.07)
+  [20/64] init_sys                       7 instrs [0x05f4-0x0619] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5f4-0x619]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.07
+    Security: fragility=15.2% worst=59.37 avg_muts=1 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (60.07)
+  [21/64] make_exception_gate_stubs      7 instrs [0x02b2-0x02c9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x2b2-0x2c9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 28 fitness=60.09
+    Security: fragility=15.2% worst=59.38 avg_muts=4 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.07 → 60.09 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 60.09)
+  [22/64] init_net                       7 instrs [0x050b-0x0530] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x50b-0x530]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.11
+    Security: fragility=15.2% worst=59.41 avg_muts=2 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.09 → 60.11 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 60.11)
+  [23/64] ap_check                       6 instrs [0x0186-0x019c] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x186-0x19c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.11
+    Security: fragility=14.2% worst=60.11 avg_muts=2 [FRAGILE!]
+    no improvement (60.11)
+  [24/64] init_net_probe_find_next_driver 6 instrs [0x056a-0x0579] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x56a-0x579]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 495 fitness=60.17
+    Security: fragility=15.1% worst=59.45 avg_muts=5 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.11 → 60.17 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 60.17)
+  [25/64] init_net_probe_find_next_device 6 instrs [0x0579-0x0588] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x579-0x588]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=60.18
+    Security: fragility=14.2% worst=60.13 avg_muts=4 [FRAGILE!]
+    Optimize: 60.17 → 60.18 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.18)
+  [26/64] os_bus_read_bar_32bit          6 instrs [0x06e4-0x06f0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6e4-0x6f0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=60.20
+    Security: fragility=14.5% worst=59.91 avg_muts=8 [FRAGILE!]
+    Optimize: 60.18 → 60.20 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.20)
+  [27/64] init_net_probe_found           6 instrs [0x0588-0x059b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x588-0x59b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 30 fitness=60.21
+    Security: fragility=15.1% worst=59.50 avg_muts=5 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.20 → 60.21 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.21)
+  [28/64] init_net_probe_not_found       5 instrs [0x05cf-0x05e4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5cf-0x5e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 567 fitness=60.28
+    Security: fragility=15.0% worst=59.52 avg_muts=3 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.21 → 60.28 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.28)
+  [29/64] init_net_end                   5 instrs [0x05cf-0x05e4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5cf-0x5e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 20 fitness=60.29
+    Security: fragility=14.0% worst=60.24 avg_muts=3 [FRAGILE!]
+    no improvement (60.29)
+  [30/64] init_nvs_done                  5 instrs [0x04f6-0x050b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4f6-0x50b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 135 fitness=60.34
+    Security: fragility=15.0% worst=59.59 avg_muts=3 [FRAGILE!]
+    Optimize: 60.28 → 60.34 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 60.34)
+  [31/64] init_sys_done                  5 instrs [0x0619-0x062e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x619-0x62e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 45 fitness=60.41
+    Security: fragility=14.9% worst=59.64 avg_muts=3 [FRAGILE!]
+    Optimize: 60.34 → 60.41 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.41)
+  [32/64] no_more_aps                    5 instrs [0x03a7-0x03bc] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x3a7-0x3bc]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 419 fitness=60.51
+    Security: fragility=14.8% worst=59.71 avg_muts=3 [FRAGILE!]
+    Optimize: 60.41 → 60.51 (+0.10, +0.17%)
+    ACCEPTED ✓ (cumulative fitness: 60.51)
+  [33/64] init_nvs                       5 instrs [0x04b9-0x04d0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4b9-0x4d0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 50 fitness=60.54
+    Security: fragility=14.0% worst=60.30 avg_muts=3 [FRAGILE!]
+    Optimize: 60.51 → 60.54 (+0.03, +0.05%)
+    ACCEPTED ✓ (cumulative fitness: 60.54)
+  [34/64] os_bus_read_bar_io             5 instrs [0x06f0-0x06f9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6f0-0x6f9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.54
+    Security: fragility=13.7% worst=60.54 avg_muts=8 [FRAGILE!]
+    no improvement (60.54)
+  [35/64] ap_process                     5 instrs [0x01a6-0x01b9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x1a6-0x1b9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 312 fitness=60.62
+    Security: fragility=14.7% worst=59.84 avg_muts=6 [FRAGILE!]
+    Optimize: 60.54 → 60.62 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.62)
+  [36/64] os_bus_cap_check_next          5 instrs [0x0710-0x071e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x710-0x71e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 49 fitness=60.69
+    Security: fragility=14.5% worst=59.92 avg_muts=8 [FRAGILE!]
+    Optimize: 60.62 → 60.69 (+0.07, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 60.69)
+  [37/64] init_bus_pci_probe_next        4 instrs [0x045d-0x0469] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x45d-0x469]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.69
+    Security: fragility=13.5% worst=60.69 avg_muts=4 [FRAGILE!]
+    no improvement (60.69)
+  [38/64] init_bus_pcie_probe_next       4 instrs [0x042a-0x0437] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x42a-0x437]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.69
+    Security: fragility=13.5% worst=60.69 avg_muts=3 [FRAGILE!]
+    no improvement (60.69)
+  [39/64] init_nvs_virtio_blk            4 instrs [0x04e9-0x04f6] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4e9-0x4f6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 696 fitness=60.72
+    Security: fragility=14.5% worst=59.98 avg_muts=3 [FRAGILE!]
+    Optimize: 60.69 → 60.72 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 60.72)
+  [40/64] init_64_lfb                    4 instrs [0x0339-0x034b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x339-0x34b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 10 fitness=60.73
+    Security: fragility=13.7% worst=60.50 avg_muts=4 [FRAGILE!]
+    no improvement (60.73)
+  [41/64] init_bus_pci_probe             3 instrs [0x0453-0x045d] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x453-0x45d]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.72
+    Security: fragility=13.4% worst=60.72 avg_muts=2 [FRAGILE!]
+    no improvement (60.72)
+  [42/64] init_hid_done                  3 instrs [0x05e9-0x05f4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5e9-0x5f4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 27 fitness=60.80
+    Security: fragility=14.4% worst=60.01 avg_muts=4 [FRAGILE!]
+    Optimize: 60.72 → 60.80 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.80)
+  [43/64] init_bus_pcie_probe            3 instrs [0x03ff-0x0409] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x3ff-0x409]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.80
+    Security: fragility=13.3% worst=60.80 avg_muts=2 [FRAGILE!]
+    no improvement (60.80)
+  [44/64] os_bus_cap_check_next_offset   3 instrs [0x071e-0x0725] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x71e-0x725]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.80
+    Security: fragility=13.3% worst=60.80 avg_muts=6 [FRAGILE!]
+    no improvement (60.80)
+  [45/64] os_bus_write                   SKIP (too small)
+  [46/64] ap_check_scheduler             SKIP (too small)
+  [47/64] skip_ap                        SKIP (too small)
+  [48/64] init_net_probe_found_virtio    SKIP (too small)
+  [49/64] init_net_probe_found_e1000     SKIP (too small)
+  [50/64] ap_halt                        SKIP (too small)
+  [51/64] os_bus_read                    SKIP (too small)
+  [52/64] init_gpu                       SKIP (too small)
+  [53/64] init_gpu_no_gpu                SKIP (too small)
+  [54/64] os_bus_read_pcie               SKIP (too small)
+  [55/64] os_bus_read_pci                SKIP (too small)
+  [56/64] msg_gpu_init                   SKIP (too small)
+  [57/64] os_bus_write_pcie              SKIP (too small)
+  [58/64] os_bus_write_pci               SKIP (too small)
+  [59/64] msg_gpu_vram                   SKIP (too small)
+  [60/64] msg_gpu_mb                     SKIP (too small)
+  [61/64] msg_gpu_chip                   SKIP (too small)
+  [62/64] init_hid                       SKIP (too small)
+  [63/64] init_gpu                       SKIP (too small)
+  [64/64] init_bus_pci_not_found         SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 44 analyzed | 17 critical | 27 fragile | 0 robust | 0 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     init_64                        fragility= 16.3% (58 instrs, 249 bytes)
+     os_bus_read_bar                fragility= 16.3% (51 instrs, 142 bytes)
+     bsp                            fragility= 16.0% (21 instrs, 62 bytes)
+     make_interrupt_gate_stubs      fragility= 15.8% (19 instrs, 86 bytes)
+     init_bus_pci_probe_found       fragility= 15.8% (15 instrs, 35 bytes)
+     init_64_vga                    fragility= 15.7% (15 instrs, 67 bytes)
+     init_bus_pcie_probe_found      fragility= 15.6% (14 instrs, 33 bytes)
+     init_bus_end                   fragility= 15.5% (10 instrs, 43 bytes)
+     os_bus_cap_check               fragility= 15.4% (8 instrs, 23 bytes)
+     init_bus                       fragility= 15.4% (8 instrs, 38 bytes)
+     make_exception_gates           fragility= 15.3% (7 instrs, 26 bytes)
+     init_sys                       fragility= 15.2% (7 instrs, 37 bytes)
+     make_exception_gate_stubs      fragility= 15.2% (7 instrs, 23 bytes)
+     init_net                       fragility= 15.2% (7 instrs, 37 bytes)
+     init_net_probe_find_next_driver fragility= 15.1% (6 instrs, 15 bytes)
+     init_net_probe_found           fragility= 15.1% (6 instrs, 19 bytes)
+     init_net_probe_not_found       fragility= 15.0% (5 instrs, 21 bytes)
+
+  🟡 FRAGILE (5-15% fitness drop):
+     init_nvs_done                  fragility= 15.0% (5 instrs, 21 bytes)
+     create_gate                    fragility= 15.0% (14 instrs, 29 bytes)
+     init_sys_done                  fragility= 14.9% (5 instrs, 21 bytes)
+     no_more_aps                    fragility= 14.8% (5 instrs, 21 bytes)
+     ap_clear                       fragility= 14.7% (10 instrs, 40 bytes)
+     ap_process                     fragility= 14.7% (5 instrs, 19 bytes)
+     os_bus_cap_check_next          fragility= 14.5% (5 instrs, 14 bytes)
+     os_bus_read_bar_32bit          fragility= 14.5% (6 instrs, 12 bytes)
+     init_nvs_virtio_blk            fragility= 14.5% (4 instrs, 13 bytes)
+     init_bus_pci                   fragility= 14.4% (8 instrs, 28 bytes)
+     init_net_probe_find_driver     fragility= 14.4% (8 instrs, 29 bytes)
+     init_hid_done                  fragility= 14.4% (3 instrs, 11 bytes)
+     init_nvs_check_bus             fragility= 14.4% (8 instrs, 25 bytes)
+     init_net_check_bus             fragility= 14.4% (8 instrs, 29 bytes)
+     next_ap                        fragility= 14.3% (7 instrs, 20 bytes)
+     init_net_probe_found_finish    fragility= 14.3% (7 instrs, 38 bytes)
+     init_net_probe_find_next_device fragility= 14.2% (6 instrs, 15 bytes)
+     ap_check                       fragility= 14.2% (6 instrs, 22 bytes)
+     init_net_end                   fragility= 14.0% (5 instrs, 21 bytes)
+     init_nvs                       fragility= 14.0% (5 instrs, 23 bytes)
+     init_64_lfb                    fragility= 13.7% (4 instrs, 18 bytes)
+     os_bus_read_bar_io             fragility= 13.7% (5 instrs, 9 bytes)
+     init_bus_pcie_probe_next       fragility= 13.5% (4 instrs, 13 bytes)
+     init_bus_pci_probe_next        fragility= 13.5% (4 instrs, 12 bytes)
+     init_bus_pci_probe             fragility= 13.4% (3 instrs, 10 bytes)
+     init_bus_pcie_probe            fragility= 13.3% (3 instrs, 10 bytes)
+     os_bus_cap_check_next_offset   fragility= 13.3% (3 instrs, 7 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ init_64                        +0.07%
+    ✓ os_bus_read_bar                +0.41%
+    ✓ bsp                            +0.11%
+    ✓ make_interrupt_gate_stubs      +0.06%
+    ✓ init_bus_pci_probe_found       +0.06%
+    ✓ init_64_vga                    +0.13%
+    ✓ init_bus_pcie_probe_found      +0.02%
+    ✓ init_bus_end                   +0.18%
+    ✓ os_bus_cap_check               +0.08%
+    ✓ init_bus                       +0.02%
+    ✓ make_exception_gates           +0.02%
+    ✓ make_exception_gate_stubs      +0.04%
+    ✓ init_net                       +0.04%
+    ✓ init_net_probe_find_next_driver +0.09%
+    ✓ init_net_probe_found           +0.02%
+    ✓ init_net_probe_not_found       +0.12%
+    ✓ init_nvs_done                  +0.09%
+    ✓ create_gate                    +0.04%
+    ✓ init_sys_done                  +0.12%
+    ✓ no_more_aps                    +0.17%
+    ✓ ap_clear                       +0.02%
+    ✓ ap_process                     +0.13%
+    ✓ os_bus_cap_check_next          +0.11%
+    ✓ os_bus_read_bar_32bit          +0.02%
+    ✓ init_nvs_virtio_blk            +0.06%
+    ✓ init_net_probe_find_driver     +0.02%
+    ✓ init_hid_done                  +0.13%
+    ✓ next_ap                        +0.04%
+    ✓ init_net_probe_find_next_device +0.02%
+    ✓ init_nvs                       +0.05%
+
+  ── Final QEMU Validation ──
+  30 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: smp ===
+  Functions analyzed: 64
+  Functions improved: 30
+  Final GPU fitness: 60.80
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting bus at Thu Feb 26 07:09:05 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: bus ===
+  Region: 0x1003d9 - 0x10193b (229 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. os_bus_read_bar                  51 instrs  [0x0656-0x06e4] (142 bytes)
+     2. os_debug_block                   33 instrs  [0x087f-0x08ea] (107 bytes)
+     3. os_debug_dump_al                 26 instrs  [0x0776-0x07c6] (80 bytes)
+     4. nextchar                         19 instrs  [0x07f1-0x0826] (53 bytes)
+     5. os_debug_string                  16 instrs  [0x085c-0x087f] (35 bytes)
+     6. os_debug_dump_mem                15 instrs  [0x07c6-0x07ef] (41 bytes)
+     7. init_bus_pci_probe_found         15 instrs  [0x0469-0x048c] (35 bytes)
+     8. init_bus_pcie_probe_found        14 instrs  [0x0409-0x042a] (33 bytes)
+     9. os_debug_block_nextline          12 instrs  [0x08ea-0x0902] (24 bytes)
+    10. init_bus_end                     10 instrs  [0x048d-0x04b8] (43 bytes)
+    11. os_debug_dump_rax                 9 instrs  [0x072b-0x0753] (40 bytes)
+    12. init_nvs_check_bus                8 instrs  [0x04d0-0x04e9] (25 bytes)
+    13. init_net_check_bus                8 instrs  [0x0530-0x054d] (29 bytes)
+    14. init_net_probe_find_driver        8 instrs  [0x054d-0x056a] (29 bytes)
+    15. os_debug_space                    8 instrs  [0x0848-0x085c] (20 bytes)
+    16. init_bus                          8 instrs  [0x03d9-0x03ff] (38 bytes)
+    17. os_bus_cap_check                  8 instrs  [0x06f9-0x0710] (23 bytes)
+    18. init_bus_pci                      8 instrs  [0x0437-0x0453] (28 bytes)
+    19. init_net                          7 instrs  [0x050b-0x0530] (37 bytes)
+    20. init_net_probe_found_finish       7 instrs  [0x05a9-0x05cf] (38 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 64 functions, 430 instructions
+
+  [1/64] os_bus_read_bar                51 instrs [0x0656-0x06e4] → 3K iters
+    [GPU] 1024 threads x 3000 iters = 3.1M evals | range [0x656-0x6e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 356 fitness=59.56
+    Security: fragility=16.4% worst=58.61 avg_muts=232 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.56 (+0.25, +0.42%)
+    ACCEPTED ✓ (cumulative fitness: 59.56)
+  [2/64] os_debug_block                 33 instrs [0x087f-0x08ea] → 2K iters
+    [GPU] 1024 threads x 2000 iters = 2.0M evals | range [0x87f-0x8ea]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 37 fitness=59.59
+    Security: fragility=16.1% worst=58.83 avg_muts=90 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.56 → 59.59 (+0.03, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.59)
+  [3/64] os_debug_dump_al               26 instrs [0x0776-0x07c6] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x776-0x7c6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=59.63
+    Security: fragility=16.0% worst=58.90 avg_muts=8 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.59 → 59.63 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.63)
+  [4/64] nextchar                       19 instrs [0x07f1-0x0826] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x7f1-0x826]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 577 fitness=59.79
+    Security: fragility=15.9% worst=58.95 avg_muts=43 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.63 → 59.79 (+0.15, +0.26%)
+    ACCEPTED ✓ (cumulative fitness: 59.79)
+  [5/64] os_debug_string                16 instrs [0x085c-0x087f] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x85c-0x87f]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.77
+    Security: fragility=15.0% worst=59.55 avg_muts=38 [FRAGILE!]
+    no improvement (59.77)
+  [6/64] os_debug_dump_mem              15 instrs [0x07c6-0x07ef] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x7c6-0x7ef]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 442 fitness=59.84
+    Security: fragility=15.6% worst=59.07 avg_muts=22 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.79 → 59.84 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 59.84)
+  [7/64] init_bus_pci_probe_found       15 instrs [0x0469-0x048c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x469-0x48c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 140 fitness=59.87
+    Security: fragility=15.6% worst=59.13 avg_muts=26 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.84 → 59.87 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 59.87)
+  [8/64] init_bus_pcie_probe_found      14 instrs [0x0409-0x042a] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x409-0x42a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 7 fitness=59.89
+    Security: fragility=15.5% worst=59.18 avg_muts=27 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.87 → 59.89 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.89)
+  [9/64] os_debug_block_nextline        12 instrs [0x08ea-0x0902] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x8ea-0x902]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 29 fitness=59.96
+    Security: fragility=15.5% worst=59.19 avg_muts=33 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.89 → 59.96 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 59.96)
+  [10/64] init_bus_end                   10 instrs [0x048d-0x04b8] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x48d-0x4b8]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 88 fitness=60.01
+    Security: fragility=15.4% worst=59.20 avg_muts=20 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.96 → 60.01 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 60.01)
+  [11/64] os_debug_dump_rax              9 instrs [0x072b-0x0753] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x72b-0x753]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 751 fitness=60.06
+    Security: fragility=15.2% worst=59.31 avg_muts=25 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.01 → 60.06 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 60.06)
+  [12/64] init_nvs_check_bus             8 instrs [0x04d0-0x04e9] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x4d0-0x4e9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.06
+    Security: fragility=14.2% worst=60.06 avg_muts=13 [FRAGILE!]
+    no improvement (60.06)
+  [13/64] init_net_check_bus             8 instrs [0x0530-0x054d] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x530-0x54d]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.06
+    Security: fragility=14.2% worst=60.06 avg_muts=11 [FRAGILE!]
+    no improvement (60.06)
+  [14/64] init_net_probe_find_driver     8 instrs [0x054d-0x056a] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x54d-0x56a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=60.08
+    Security: fragility=14.2% worst=60.04 avg_muts=19 [FRAGILE!]
+    Optimize: 60.06 → 60.08 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.08)
+  [15/64] os_debug_space                 8 instrs [0x0848-0x085c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x848-0x85c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 2 fitness=60.12
+    Security: fragility=15.1% worst=59.38 avg_muts=6 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.08 → 60.12 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 60.12)
+  [16/64] init_bus                       8 instrs [0x03d9-0x03ff] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x3d9-0x3ff]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.12
+    Security: fragility=14.1% worst=60.12 avg_muts=9 [FRAGILE!]
+    no improvement (60.12)
+  [17/64] os_bus_cap_check               8 instrs [0x06f9-0x0710] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x6f9-0x710]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 101 fitness=60.17
+    Security: fragility=15.1% worst=59.40 avg_muts=29 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 60.12 → 60.17 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.17)
+  [18/64] init_bus_pci                   8 instrs [0x0437-0x0453] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x437-0x453]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.17
+    Security: fragility=14.1% worst=60.13 avg_muts=4 [FRAGILE!]
+    no improvement (60.17)
+  [19/64] init_net                       7 instrs [0x050b-0x0530] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x50b-0x530]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 47 fitness=60.19
+    Security: fragility=14.0% worst=60.16 avg_muts=2 [FRAGILE!]
+    Optimize: 60.17 → 60.19 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 60.19)
+  [20/64] init_net_probe_found_finish    7 instrs [0x05a9-0x05cf] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5a9-0x5cf]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.19
+    Security: fragility=14.0% worst=60.17 avg_muts=2 [FRAGILE!]
+    no improvement (60.19)
+  [21/64] init_sys                       7 instrs [0x05f4-0x0619] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5f4-0x619]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.19
+    Security: fragility=15.0% worst=59.49 avg_muts=1 [FRAGILE!]
+    no improvement (60.19)
+  [22/64] os_debug_dump_mem_done         7 instrs [0x082b-0x0834] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x82b-0x834]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.19
+    Security: fragility=14.0% worst=60.19 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.19)
+  [23/64] os_debug_newline               6 instrs [0x0834-0x0848] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x834-0x848]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 8 fitness=60.24
+    Security: fragility=14.9% worst=59.54 avg_muts=1 [FRAGILE!]
+    Optimize: 60.19 → 60.24 (+0.05, +0.08%)
+    ACCEPTED ✓ (cumulative fitness: 60.24)
+  [24/64] init_net_probe_found           6 instrs [0x0588-0x059b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x588-0x59b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 7 fitness=60.26
+    Security: fragility=14.9% worst=59.54 avg_muts=5 [FRAGILE!]
+    Optimize: 60.24 → 60.26 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.26)
+  [25/64] os_bus_read_bar_32bit          6 instrs [0x06e4-0x06f0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6e4-0x6f0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 3 fitness=60.27
+    Security: fragility=14.3% worst=59.98 avg_muts=8 [FRAGILE!]
+    Optimize: 60.26 → 60.27 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.27)
+  [26/64] init_net_probe_find_next_driver 6 instrs [0x056a-0x0579] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x56a-0x579]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 47 fitness=60.33
+    Security: fragility=14.8% worst=59.60 avg_muts=4 [FRAGILE!]
+    Optimize: 60.27 → 60.33 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 60.33)
+  [27/64] init_net_probe_find_next_device 6 instrs [0x0579-0x0588] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x579-0x588]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 11 fitness=60.34
+    Security: fragility=13.9% worst=60.28 avg_muts=4 [FRAGILE!]
+    Optimize: 60.33 → 60.34 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.34)
+  [28/64] init_nvs                       5 instrs [0x04b9-0x04d0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4b9-0x4d0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 108 fitness=60.37
+    Security: fragility=14.8% worst=59.63 avg_muts=3 [FRAGILE!]
+    Optimize: 60.34 → 60.37 (+0.03, +0.05%)
+    ACCEPTED ✓ (cumulative fitness: 60.37)
+  [29/64] init_net_probe_not_found       5 instrs [0x05cf-0x05e4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5cf-0x5e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 304 fitness=60.43
+    Security: fragility=14.7% worst=59.67 avg_muts=3 [FRAGILE!]
+    Optimize: 60.37 → 60.43 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 60.43)
+  [30/64] os_bus_read_bar_io             5 instrs [0x06f0-0x06f9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x6f0-0x6f9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.43
+    Security: fragility=13.7% worst=60.43 avg_muts=7 [FRAGILE!]
+    no improvement (60.43)
+  [31/64] init_net_end                   5 instrs [0x05cf-0x05e4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5cf-0x5e4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 12 fitness=60.45
+    Security: fragility=14.0% worst=60.22 avg_muts=3 [FRAGILE!]
+    Optimize: 60.43 → 60.45 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 60.45)
+  [32/64] os_bus_cap_check_next          5 instrs [0x0710-0x071e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x710-0x71e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 21 fitness=60.51
+    Security: fragility=14.6% worst=59.75 avg_muts=8 [FRAGILE!]
+    Optimize: 60.45 → 60.51 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 60.51)
+  [33/64] init_nvs_done                  5 instrs [0x04f6-0x050b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4f6-0x50b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 473 fitness=60.58
+    Security: fragility=14.5% worst=59.82 avg_muts=3 [FRAGILE!]
+    Optimize: 60.51 → 60.58 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 60.58)
+  [34/64] os_debug_dump_eax              5 instrs [0x0753-0x0769] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x753-0x769]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 197 fitness=60.61
+    Security: fragility=14.5% worst=59.87 avg_muts=5 [FRAGILE!]
+    Optimize: 60.58 → 60.61 (+0.03, +0.05%)
+    ACCEPTED ✓ (cumulative fitness: 60.61)
+  [35/64] init_sys_done                  5 instrs [0x0619-0x062e] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x619-0x62e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 64 fitness=60.68
+    Security: fragility=14.5% worst=59.89 avg_muts=3 [FRAGILE!]
+    Optimize: 60.61 → 60.68 (+0.07, +0.12%)
+    ACCEPTED ✓ (cumulative fitness: 60.68)
+  [36/64] init_bus_pci_probe_next        4 instrs [0x045d-0x0469] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x45d-0x469]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.68
+    Security: fragility=13.4% worst=60.68 avg_muts=4 [FRAGILE!]
+    no improvement (60.68)
+  [37/64] init_nvs_virtio_blk            4 instrs [0x04e9-0x04f6] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x4e9-0x4f6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 226 fitness=60.72
+    Security: fragility=14.4% worst=59.97 avg_muts=3 [FRAGILE!]
+    Optimize: 60.68 → 60.72 (+0.04, +0.06%)
+    ACCEPTED ✓ (cumulative fitness: 60.72)
+  [38/64] init_bus_pcie_probe_next       4 instrs [0x042a-0x0437] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x42a-0x437]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.72
+    Security: fragility=13.3% worst=60.72 avg_muts=3 [FRAGILE!]
+    no improvement (60.72)
+  [39/64] os_bus_cap_check_error         3 instrs [0x0725-0x0728] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x725-0x728]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.72
+    Security: fragility=13.3% worst=60.72 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.72)
+  [40/64] os_bus_cap_check_done          3 instrs [0x0728-0x072b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x728-0x72b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.72
+    Security: fragility=13.3% worst=60.72 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (60.72)
+  [41/64] init_bus_pci_probe             3 instrs [0x0453-0x045d] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x453-0x45d]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.72
+    Security: fragility=13.3% worst=60.72 avg_muts=2 [FRAGILE!]
+    no improvement (60.72)
+  [42/64] init_hid_done                  3 instrs [0x05e9-0x05f4] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x5e9-0x5f4]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 11 fitness=60.80
+    Security: fragility=14.3% worst=60.00 avg_muts=4 [FRAGILE!]
+    Optimize: 60.72 → 60.80 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 60.80)
+  [43/64] os_debug_dump_ax               3 instrs [0x0769-0x0776] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x769-0x776]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 24 fitness=60.85
+    Security: fragility=14.2% worst=60.08 avg_muts=5 [FRAGILE!]
+    Optimize: 60.80 → 60.85 (+0.06, +0.10%)
+    ACCEPTED ✓ (cumulative fitness: 60.85)
+  [44/64] init_bus_pcie_probe            3 instrs [0x03ff-0x0409] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x3ff-0x409]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.85
+    Security: fragility=13.1% worst=60.85 avg_muts=2 [FRAGILE!]
+    no improvement (60.85)
+  [45/64] os_bus_cap_check_next_offset   3 instrs [0x071e-0x0725] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x71e-0x725]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=60.85
+    Security: fragility=13.1% worst=60.85 avg_muts=6 [FRAGILE!]
+    no improvement (60.85)
+  [46/64] init_net_probe_found_virtio    SKIP (too small)
+  [47/64] init_net_probe_found_e1000     SKIP (too small)
+  [48/64] os_bus_read                    SKIP (too small)
+  [49/64] os_bus_write                   SKIP (too small)
+  [50/64] init_gpu_no_gpu                SKIP (too small)
+  [51/64] os_bus_read_pcie               SKIP (too small)
+  [52/64] os_bus_read_pci                SKIP (too small)
+  [53/64] msg_gpu_init                   SKIP (too small)
+  [54/64] os_bus_write_pcie              SKIP (too small)
+  [55/64] os_bus_write_pci               SKIP (too small)
+  [56/64] nextline                       SKIP (too small)
+  [57/64] msg_gpu_vram                   SKIP (too small)
+  [58/64] os_debug_dump_mem_done_newline SKIP (too small)
+  [59/64] msg_gpu_mb                     SKIP (too small)
+  [60/64] msg_gpu_chip                   SKIP (too small)
+  [61/64] init_hid                       SKIP (too small)
+  [62/64] init_gpu                       SKIP (too small)
+  [63/64] init_bus_pci_not_found         SKIP (too small)
+  [64/64] init_gpu                       SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 45 analyzed | 12 critical | 33 fragile | 0 robust | 3 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     os_bus_read_bar                fragility= 16.4% (51 instrs, 142 bytes)
+     os_debug_block                 fragility= 16.1% (33 instrs, 107 bytes)
+     os_debug_dump_al               fragility= 16.0% (26 instrs, 80 bytes)
+     nextchar                       fragility= 15.9% (19 instrs, 53 bytes)
+     os_debug_dump_mem              fragility= 15.6% (15 instrs, 41 bytes)
+     init_bus_pci_probe_found       fragility= 15.6% (15 instrs, 35 bytes)
+     init_bus_pcie_probe_found      fragility= 15.5% (14 instrs, 33 bytes)
+     os_debug_block_nextline        fragility= 15.5% (12 instrs, 24 bytes)
+     init_bus_end                   fragility= 15.4% (10 instrs, 43 bytes)
+     os_debug_dump_rax              fragility= 15.2% (9 instrs, 40 bytes)
+     os_debug_space                 fragility= 15.1% (8 instrs, 20 bytes)
+     os_bus_cap_check               fragility= 15.1% (8 instrs, 23 bytes)
+
+  🟡 FRAGILE (5-15% fitness drop):
+     init_sys                       fragility= 15.0% (7 instrs, 37 bytes)
+     os_debug_string                fragility= 15.0% (16 instrs, 35 bytes)
+     os_debug_newline               fragility= 14.9% (6 instrs, 20 bytes)
+     init_net_probe_found           fragility= 14.9% (6 instrs, 19 bytes)
+     init_net_probe_find_next_driver fragility= 14.8% (6 instrs, 15 bytes)
+     init_nvs                       fragility= 14.8% (5 instrs, 23 bytes)
+     init_net_probe_not_found       fragility= 14.7% (5 instrs, 21 bytes)
+     os_bus_cap_check_next          fragility= 14.6% (5 instrs, 14 bytes)
+     init_nvs_done                  fragility= 14.5% (5 instrs, 21 bytes)
+     os_debug_dump_eax              fragility= 14.5% (5 instrs, 22 bytes)
+     init_sys_done                  fragility= 14.5% (5 instrs, 21 bytes)
+     init_nvs_virtio_blk            fragility= 14.4% (4 instrs, 13 bytes)
+     init_hid_done                  fragility= 14.3% (3 instrs, 11 bytes)
+     os_bus_read_bar_32bit          fragility= 14.3% (6 instrs, 12 bytes)
+     os_debug_dump_ax               fragility= 14.2% (3 instrs, 13 bytes)
+     init_net_probe_find_driver     fragility= 14.2% (8 instrs, 29 bytes)
+     init_net_check_bus             fragility= 14.2% (8 instrs, 29 bytes)
+     init_nvs_check_bus             fragility= 14.2% (8 instrs, 25 bytes)
+     init_bus                       fragility= 14.1% (8 instrs, 38 bytes)
+     init_bus_pci                   fragility= 14.1% (8 instrs, 28 bytes)
+     init_net                       fragility= 14.0% (7 instrs, 37 bytes)
+     init_net_probe_found_finish    fragility= 14.0% (7 instrs, 38 bytes)
+     init_net_end                   fragility= 14.0% (5 instrs, 21 bytes)
+     os_debug_dump_mem_done         fragility= 14.0% (7 instrs, 9 bytes)
+     init_net_probe_find_next_device fragility= 13.9% (6 instrs, 15 bytes)
+     os_bus_read_bar_io             fragility= 13.7% (5 instrs, 9 bytes)
+     init_bus_pci_probe_next        fragility= 13.4% (4 instrs, 12 bytes)
+     os_bus_cap_check_done          fragility= 13.3% (3 instrs, 3 bytes)
+     init_bus_pci_probe             fragility= 13.3% (3 instrs, 10 bytes)
+     init_bus_pcie_probe_next       fragility= 13.3% (4 instrs, 13 bytes)
+     os_bus_cap_check_error         fragility= 13.3% (3 instrs, 3 bytes)
+     init_bus_pcie_probe            fragility= 13.1% (3 instrs, 10 bytes)
+     os_bus_cap_check_next_offset   fragility= 13.1% (3 instrs, 7 bytes)
+
+  ⚪ DEAD CODE (no mutations applied — possibly data or unreachable):
+     os_debug_dump_mem_done         (7 instrs, 9 bytes)
+     os_bus_cap_check_done          (3 instrs, 3 bytes)
+     os_bus_cap_check_error         (3 instrs, 3 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ os_bus_read_bar                +0.42%
+    ✓ os_debug_block                 +0.06%
+    ✓ os_debug_dump_al               +0.07%
+    ✓ nextchar                       +0.26%
+    ✓ os_debug_dump_mem              +0.08%
+    ✓ init_bus_pci_probe_found       +0.06%
+    ✓ init_bus_pcie_probe_found      +0.02%
+    ✓ os_debug_block_nextline        +0.13%
+    ✓ init_bus_end                   +0.07%
+    ✓ os_debug_dump_rax              +0.09%
+    ✓ os_debug_space                 +0.07%
+    ✓ os_bus_cap_check               +0.08%
+    ✓ os_debug_newline               +0.08%
+    ✓ init_net_probe_found           +0.02%
+    ✓ init_net_probe_find_next_driver +0.09%
+    ✓ init_nvs                       +0.05%
+    ✓ init_net_probe_not_found       +0.11%
+    ✓ os_bus_cap_check_next          +0.11%
+    ✓ init_nvs_done                  +0.11%
+    ✓ os_debug_dump_eax              +0.05%
+    ✓ init_sys_done                  +0.12%
+    ✓ init_nvs_virtio_blk            +0.06%
+    ✓ init_hid_done                  +0.13%
+    ✓ os_bus_read_bar_32bit          +0.02%
+    ✓ os_debug_dump_ax               +0.10%
+    ✓ init_net_probe_find_driver     +0.02%
+    ✓ init_net                       +0.04%
+    ✓ init_net_end                   +0.02%
+    ✓ init_net_probe_find_next_device +0.02%
+
+  ── Final QEMU Validation ──
+  29 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: bus ===
+  Functions analyzed: 64
+  Functions improved: 29
+  Final GPU fitness: 60.85
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting timer at Thu Feb 26 07:10:05 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: timer ===
+  Region: 0x1016a9 - 0x101896 (161 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. kvm_ns_wait                      23 instrs  [0x17fd-0x183a] (61 bytes)
+     2. hpet_delay                       17 instrs  [0x1779-0x17ab] (50 bytes)
+     3. kvm_ns_shift_done                17 instrs  [0x183f-0x1864] (37 bytes)
+     4. hpet_ns                          11 instrs  [0x173c-0x175d] (33 bytes)
+     5. kvm_delay                         9 instrs  [0x1864-0x187b] (23 bytes)
+     6. kvm_delay_wait                    9 instrs  [0x187b-0x188c] (17 bytes)
+     7. os_timer_init                     8 instrs  [0x16a9-0x16c5] (28 bytes)
+     8. os_timer_init_phys                7 instrs  [0x16c5-0x16f1] (44 bytes)
+     9. init_timer_hpet                   7 instrs  [0x1713-0x173b] (40 bytes)
+    10. init_timer_kvm                    7 instrs  [0x17c1-0x17d6] (21 bytes)
+    11. kvm_ns                            7 instrs  [0x17f0-0x17fd] (13 bytes)
+    12. hpet_delay_end                    5 instrs  [0x17bc-0x17c1] (5 bytes)
+    13. hpet_write                        5 instrs  [0x176a-0x1779] (15 bytes)
+    14. init_timer_kvm_configure          5 instrs  [0x17e2-0x17f0] (14 bytes)
+    15. hpet_delay_loop                   5 instrs  [0x17ab-0x17bc] (17 bytes)
+    16. os_timer_init_kvm                 4 instrs  [0x16f1-0x1710] (31 bytes)
+    17. timer_delay                       4 instrs  [0x188c-0x1896] (10 bytes)
+    18. hpet_read                         3 instrs  [0x175d-0x176a] (13 bytes)
+    19. init_timer_kvm_clocksource2       2 instrs  [0x17d6-0x17dd] (7 bytes)
+    20. kvm_ns_shift_right                2 instrs  [0x183a-0x183f] (5 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 24 functions, 161 instructions
+
+  [1/24] kvm_ns_wait                    23 instrs [0x17fd-0x183a] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x17fd-0x183a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+    Security: fragility=15.4% worst=59.29 avg_muts=49 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.31)
+  [2/24] hpet_delay                     17 instrs [0x1779-0x17ab] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x1779-0x17ab]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 6 fitness=59.32
+    Security: fragility=16.4% worst=58.61 avg_muts=85 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.32 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.32)
+  [3/24] kvm_ns_shift_done              17 instrs [0x183f-0x1864] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x183f-0x1864]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.32
+    Security: fragility=15.4% worst=59.32 avg_muts=49 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.32)
+  [4/24] hpet_ns                        11 instrs [0x173c-0x175d] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x173c-0x175d]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.34
+    Security: fragility=16.3% worst=58.65 avg_muts=10 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.32 → 59.34 (+0.02, +0.03%)
+    ACCEPTED ✓ (cumulative fitness: 59.34)
+  [5/24] kvm_delay                      9 instrs [0x1864-0x187b] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x1864-0x187b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.34
+    Security: fragility=15.3% worst=59.34 avg_muts=35 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.34)
+  [6/24] kvm_delay_wait                 9 instrs [0x187b-0x188c] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x187b-0x188c]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.34
+    Security: fragility=15.3% worst=59.34 avg_muts=27 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.34)
+  [7/24] os_timer_init                  8 instrs [0x16a9-0x16c5] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x16a9-0x16c5]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.34
+    Security: fragility=15.3% worst=59.34 avg_muts=4 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.34)
+  [8/24] os_timer_init_phys             7 instrs [0x16c5-0x16f1] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x16c5-0x16f1]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 68 fitness=59.36
+    Security: fragility=15.4% worst=59.30 avg_muts=2 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.34 → 59.36 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.36)
+  [9/24] init_timer_hpet                7 instrs [0x1713-0x173b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x1713-0x173b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 898 fitness=59.42
+    Security: fragility=15.3% worst=59.35 avg_muts=2 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.36 → 59.42 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 59.42)
+  [10/24] init_timer_kvm                 7 instrs [0x17c1-0x17d6] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x17c1-0x17d6]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.42
+    Security: fragility=15.3% worst=59.38 avg_muts=1 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.42)
+  [11/24] kvm_ns                         7 instrs [0x17f0-0x17fd] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x17f0-0x17fd]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.42
+    Security: fragility=15.2% worst=59.42 avg_muts=0 [DEAD CODE?] [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.42)
+  [12/24] hpet_delay_end                 5 instrs [0x17bc-0x17c1] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x17bc-0x17c1]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.42
+    Security: fragility=15.2% worst=59.42 avg_muts=0 [DEAD CODE?] [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.42)
+  [13/24] hpet_write                     5 instrs [0x176a-0x1779] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x176a-0x1779]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 1 fitness=59.51
+    Security: fragility=15.2% worst=59.42 avg_muts=6 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.42 → 59.51 (+0.09, +0.15%)
+    ACCEPTED ✓ (cumulative fitness: 59.51)
+  [14/24] init_timer_kvm_configure       5 instrs [0x17e2-0x17f0] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x17e2-0x17f0]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.51
+    Security: fragility=15.0% worst=59.51 avg_muts=3 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.51)
+  [15/24] hpet_delay_loop                5 instrs [0x17ab-0x17bc] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x17ab-0x17bc]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 694 fitness=59.56
+    Security: fragility=16.0% worst=58.80 avg_muts=7 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.51 → 59.56 (+0.06, +0.09%)
+    ACCEPTED ✓ (cumulative fitness: 59.56)
+  [16/24] os_timer_init_kvm              4 instrs [0x16f1-0x1710] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x16f1-0x1710]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.56
+    Security: fragility=15.9% worst=58.88 avg_muts=1 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.56)
+  [17/24] timer_delay                    4 instrs [0x188c-0x1896] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x188c-0x1896]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.56
+    Security: fragility=14.9% worst=59.56 avg_muts=0 [DEAD CODE?] [FRAGILE!]
+    no improvement (59.56)
+  [18/24] hpet_read                      3 instrs [0x175d-0x176a] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x175d-0x176a]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.66
+    Security: fragility=15.9% worst=58.91 avg_muts=7 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.56 → 59.66 (+0.09, +0.15%)
+    ACCEPTED ✓ (cumulative fitness: 59.66)
+  [19/24] init_timer_kvm_clocksource2    SKIP (too small)
+  [20/24] kvm_ns_shift_right             SKIP (too small)
+  [21/24] os_hpet_init_error             SKIP (too small)
+  [22/24] os_timer_init_done             SKIP (too small)
+  [23/24] os_timer_init_error            SKIP (too small)
+  [24/24] init_timer_kvm_clocksource     SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 18 analyzed | 17 critical | 1 fragile | 0 robust | 3 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     hpet_delay                     fragility= 16.4% (17 instrs, 50 bytes)
+     hpet_ns                        fragility= 16.3% (11 instrs, 33 bytes)
+     hpet_delay_loop                fragility= 16.0% (5 instrs, 17 bytes)
+     os_timer_init_kvm              fragility= 15.9% (4 instrs, 31 bytes)
+     hpet_read                      fragility= 15.9% (3 instrs, 13 bytes)
+     kvm_ns_wait                    fragility= 15.4% (23 instrs, 61 bytes)
+     os_timer_init_phys             fragility= 15.4% (7 instrs, 44 bytes)
+     kvm_ns_shift_done              fragility= 15.4% (17 instrs, 37 bytes)
+     kvm_delay_wait                 fragility= 15.3% (9 instrs, 17 bytes)
+     os_timer_init                  fragility= 15.3% (8 instrs, 28 bytes)
+     kvm_delay                      fragility= 15.3% (9 instrs, 23 bytes)
+     init_timer_hpet                fragility= 15.3% (7 instrs, 40 bytes)
+     init_timer_kvm                 fragility= 15.3% (7 instrs, 21 bytes)
+     kvm_ns                         fragility= 15.2% (7 instrs, 13 bytes)
+     hpet_delay_end                 fragility= 15.2% (5 instrs, 5 bytes)
+     hpet_write                     fragility= 15.2% (5 instrs, 15 bytes)
+     init_timer_kvm_configure       fragility= 15.0% (5 instrs, 14 bytes)
+
+  🟡 FRAGILE (5-15% fitness drop):
+     timer_delay                    fragility= 14.9% (4 instrs, 10 bytes)
+
+  ⚪ DEAD CODE (no mutations applied — possibly data or unreachable):
+     kvm_ns                         (7 instrs, 13 bytes)
+     hpet_delay_end                 (5 instrs, 5 bytes)
+     timer_delay                    (4 instrs, 10 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ hpet_delay                     +0.02%
+    ✓ hpet_ns                        +0.03%
+    ✓ hpet_delay_loop                +0.09%
+    ✓ hpet_read                      +0.15%
+    ✓ os_timer_init_phys             +0.02%
+    ✓ init_timer_hpet                +0.11%
+    ✓ hpet_write                     +0.15%
+
+  ── Final QEMU Validation ──
+  7 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: timer ===
+  Functions analyzed: 24
+  Functions improved: 7
+  Final GPU fitness: 59.66
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting memory at Thu Feb 26 07:10:37 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: memory ===
+  Region: 0x1001b9 - 0x1003d9 (138 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 10):
+     1. init_64                          58 instrs  [0x01b9-0x02b2] (249 bytes)
+     2. make_interrupt_gate_stubs        19 instrs  [0x02e3-0x0339] (86 bytes)
+     3. init_64_vga                      15 instrs  [0x034b-0x038e] (67 bytes)
+     4. create_gate                      14 instrs  [0x03bc-0x03d9] (29 bytes)
+     5. make_exception_gates              7 instrs  [0x02c9-0x02e3] (26 bytes)
+     6. next_ap                           7 instrs  [0x038e-0x03a2] (20 bytes)
+     7. make_exception_gate_stubs         7 instrs  [0x02b2-0x02c9] (23 bytes)
+     8. no_more_aps                       5 instrs  [0x03a7-0x03bc] (21 bytes)
+     9. init_64_lfb                       4 instrs  [0x0339-0x034b] (18 bytes)
+    10. skip_ap                           2 instrs  [0x03a2-0x03a7] (5 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 10 functions, 138 instructions
+
+  [1/10] init_64                        58 instrs [0x01b9-0x02b2] → 3K iters
+    [GPU] 1024 threads x 3000 iters = 3.1M evals | range [0x1b9-0x2b2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 340 fitness=59.35
+    Security: fragility=16.3% worst=58.64 avg_muts=56 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.35 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.35)
+  [2/10] make_interrupt_gate_stubs      19 instrs [0x02e3-0x0339] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0x2e3-0x339]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 662 fitness=59.41
+    Security: fragility=16.3% worst=58.67 avg_muts=21 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.35 → 59.41 (+0.06, +0.11%)
+    ACCEPTED ✓ (cumulative fitness: 59.41)
+  [3/10] init_64_vga                    15 instrs [0x034b-0x038e] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x34b-0x38e]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 332 fitness=59.49
+    Security: fragility=16.2% worst=58.73 avg_muts=15 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.41 → 59.49 (+0.08, +0.13%)
+    ACCEPTED ✓ (cumulative fitness: 59.49)
+  [4/10] create_gate                    14 instrs [0x03bc-0x03d9] → 0K iters
+    [GPU] 1024 threads x 500 iters = 0.5M evals | range [0x3bc-0x3d9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 14 fitness=59.51
+    Security: fragility=15.5% worst=59.25 avg_muts=19 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.49 → 59.51 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.51)
+  [5/10] make_exception_gates           7 instrs [0x02c9-0x02e3] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x2c9-0x2e3]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 39 fitness=59.52
+    Security: fragility=16.1% worst=58.83 avg_muts=3 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.51 → 59.52 (+0.01, +0.02%)
+    ACCEPTED ✓ (cumulative fitness: 59.52)
+  [6/10] next_ap                        7 instrs [0x038e-0x03a2] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x38e-0x3a2]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 312 fitness=59.54
+    Security: fragility=15.1% worst=59.49 avg_muts=2 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.52 → 59.54 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.54)
+  [7/10] make_exception_gate_stubs      7 instrs [0x02b2-0x02c9] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x2b2-0x2c9]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 37 fitness=59.56
+    Security: fragility=16.0% worst=58.87 avg_muts=4 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.54 → 59.56 (+0.02, +0.04%)
+    ACCEPTED ✓ (cumulative fitness: 59.56)
+  [8/10] no_more_aps                    5 instrs [0x03a7-0x03bc] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x3a7-0x3bc]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 97 fitness=59.66
+    Security: fragility=16.0% worst=58.88 avg_muts=3 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.56 → 59.66 (+0.10, +0.16%)
+    ACCEPTED ✓ (cumulative fitness: 59.66)
+  [9/10] init_64_lfb                    4 instrs [0x0339-0x034b] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0x339-0x34b]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.67
+    Security: fragility=15.2% worst=59.45 avg_muts=4 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.67)
+  [10/10] skip_ap                        SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 9 analyzed | 9 critical | 0 fragile | 0 robust | 0 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     init_64                        fragility= 16.3% (58 instrs, 249 bytes)
+     make_interrupt_gate_stubs      fragility= 16.3% (19 instrs, 86 bytes)
+     init_64_vga                    fragility= 16.2% (15 instrs, 67 bytes)
+     make_exception_gates           fragility= 16.1% (7 instrs, 26 bytes)
+     make_exception_gate_stubs      fragility= 16.0% (7 instrs, 23 bytes)
+     no_more_aps                    fragility= 16.0% (5 instrs, 21 bytes)
+     create_gate                    fragility= 15.5% (14 instrs, 29 bytes)
+     init_64_lfb                    fragility= 15.2% (4 instrs, 18 bytes)
+     next_ap                        fragility= 15.1% (7 instrs, 20 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ init_64                        +0.07%
+    ✓ make_interrupt_gate_stubs      +0.11%
+    ✓ init_64_vga                    +0.13%
+    ✓ make_exception_gates           +0.02%
+    ✓ make_exception_gate_stubs      +0.04%
+    ✓ no_more_aps                    +0.16%
+    ✓ create_gate                    +0.04%
+    ✓ next_ap                        +0.04%
+
+  ── Final QEMU Validation ──
+  8 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: memory ===
+  Functions analyzed: 10
+  Functions improved: 8
+  Final GPU fitness: 59.66
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting scheduler at Thu Feb 26 07:11:03 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: scheduler ===
+  Region: 0x100e09 - 0x100fba (132 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 6):
+     1. ai_sched_find_best_core          44 instrs  [0x0f37-0x0fa8] (113 bytes)
+     2. ai_sched_dispatch_one            35 instrs  [0x0ecb-0x0f37] (108 bytes)
+     3. b_ai_sched_submit                26 instrs  [0x0e57-0x0ec3] (108 bytes)
+     4. b_ai_sched_init                  19 instrs  [0x0e09-0x0e57] (78 bytes)
+     5. b_ai_sched_submit_full            4 instrs  [0x0ec3-0x0ecb] (8 bytes)
+     6. b_ai_sched_status                 4 instrs  [0x0fa8-0x0fba] (18 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 6 functions, 132 instructions
+
+  [1/6] ai_sched_find_best_core        44 instrs [0x0f37-0x0fa8] → 2K iters
+    [GPU] 1024 threads x 2000 iters = 2.0M evals | range [0xf37-0xfa8]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 72 fitness=59.39
+    Security: fragility=16.3% worst=58.64 avg_muts=101 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.31 → 59.39 (+0.08, +0.14%)
+    ACCEPTED ✓ (cumulative fitness: 59.39)
+  [2/6] ai_sched_dispatch_one          35 instrs [0x0ecb-0x0f37] → 2K iters
+    [GPU] 1024 threads x 2000 iters = 2.0M evals | range [0xecb-0xf37]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 70 fitness=59.44
+    Security: fragility=16.3% worst=58.71 avg_muts=62 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.39 → 59.44 (+0.05, +0.08%)
+    REJECTED (safety check failed)
+  [3/6] b_ai_sched_submit              26 instrs [0x0e57-0x0ec3] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xe57-0xec3]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 255 fitness=59.47
+    Security: fragility=16.2% worst=58.71 avg_muts=25 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.39 → 59.47 (+0.08, +0.14%)
+    REJECTED (safety check failed)
+  [4/6] b_ai_sched_init                19 instrs [0x0e09-0x0e57] → 1K iters
+    [GPU] 1024 threads x 1000 iters = 1.0M evals | range [0xe09-0xe57]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.39
+    Security: fragility=16.3% worst=58.71 avg_muts=17 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.39)
+  [5/6] b_ai_sched_submit_full         4 instrs [0x0ec3-0x0ecb] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xec3-0xecb]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.39
+    Security: fragility=15.3% worst=59.39 avg_muts=8 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.39)
+  [6/6] b_ai_sched_status              4 instrs [0x0fa8-0x0fba] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xfa8-0xfba]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 8 fitness=59.43
+    Security: fragility=16.2% worst=58.74 avg_muts=4 [FRAGILE!] [CRITICAL VULNERABILITY]
+    Optimize: 59.39 → 59.43 (+0.04, +0.07%)
+    ACCEPTED ✓ (cumulative fitness: 59.43)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 6 analyzed | 6 critical | 0 fragile | 0 robust | 0 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     ai_sched_find_best_core        fragility= 16.3% (44 instrs, 113 bytes)
+     ai_sched_dispatch_one          fragility= 16.3% (35 instrs, 108 bytes)
+     b_ai_sched_init                fragility= 16.3% (19 instrs, 78 bytes)
+     b_ai_sched_submit              fragility= 16.2% (26 instrs, 108 bytes)
+     b_ai_sched_status              fragility= 16.2% (4 instrs, 18 bytes)
+     b_ai_sched_submit_full         fragility= 15.3% (4 instrs, 8 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+    ✓ ai_sched_find_best_core        +0.14%
+    ✓ b_ai_sched_status              +0.07%
+
+  ── Final QEMU Validation ──
+  2 functions improved, testing evolved kernel...
+  QEMU score: 0.0000
+
+=== GPU Evolution Complete: scheduler ===
+  Functions analyzed: 6
+  Functions improved: 2
+  Final GPU fitness: 59.43
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/
+
+--- Starting gpu_driver at Thu Feb 26 07:11:34 PM UTC 2026 ---
+AlJefra OS AI — Binary Evolution Engine
+========================================
+
+Checking prerequisites...
+  OK
+
+Initializing GPU...
+CUDA: Using NVIDIA GeForce RTX 5090 (170 SMs, 32109 MB VRAM)
+  GPU acceleration: ENABLED (NVIDIA GeForce RTX 5090)
+
+Loading kernel binary...
+  Loaded 20480 bytes
+
+Parsing listing file...
+  Parsed 9161 listing lines
+Decoding kernel instructions...
+  Decoded 8192 instructions
+
+Building component map...
+  Found 512 labels in listing
+  Component kernel      : 0x100000 - 0x1042d8 (3815 instructions, 64 functions)
+  Component memory      : 0x1001b9 - 0x1003d9 (138 instructions, 10 functions)
+  Component smp         : 0x100120 - 0x100c62 (192 instructions, 29 functions)
+  Component network     : 0x10050b - 0x102447 (820 instructions, 64 functions)
+  Component storage     : 0x1004b9 - 0x101c10 (318 instructions, 26 functions)
+  Component gpu_driver  : 0x100c62 - 0x100c87 (20 instructions, 29 functions)
+  Component bus         : 0x1003d9 - 0x10193b (229 instructions, 33 functions)
+  Component interrupts  : 0x101251 - 0x103479 (767 instructions, 51 functions)
+  Component timer       : 0x1016a9 - 0x101896 (161 instructions, 24 functions)
+  Component io          : 0x1005e4 - 0x102ed8 (1139 instructions, 64 functions)
+  Component syscalls    : 0x10072b - 0x101251 (461 instructions, 64 functions)
+  Component scheduler   : 0x100e09 - 0x100fba (132 instructions, 12 functions)
+  Found 12 active components
+
+
+=== Evolving: gpu_driver ===
+  Region: 0x100c62 - 0x100c87 (20 instructions)
+  Running baseline QEMU benchmark...
+  Baseline QEMU score: 0.0000
+
+  Functions sorted by cost (top 20):
+     1. b_gpu_vram_info                   3 instrs  [0x0c7f-0x0c84] (5 bytes)
+     2. b_gpu_compute                     2 instrs  [0x0c62-0x0c65] (3 bytes)
+     3. b_gpu_compute_done                2 instrs  [0x0c62-0x0c65] (3 bytes)
+     4. b_gpu_mem_alloc                   2 instrs  [0x0c62-0x0c65] (3 bytes)
+     5. b_gpu_mem_free                    2 instrs  [0x0c62-0x0c65] (3 bytes)
+     6. b_gpu_mem_copy_to                 2 instrs  [0x0c62-0x0c65] (3 bytes)
+     7. b_gpu_mem_copy_from               2 instrs  [0x0c62-0x0c65] (3 bytes)
+     8. b_gpu_fence_wait                  2 instrs  [0x0c62-0x0c65] (3 bytes)
+     9. b_gpu_mmio_read                   2 instrs  [0x0c62-0x0c65] (3 bytes)
+    10. b_gpu_mmio_write                  2 instrs  [0x0c62-0x0c65] (3 bytes)
+    11. b_gpu_vram_info                   2 instrs  [0x0c62-0x0c65] (3 bytes)
+    12. b_gpu_benchmark                   2 instrs  [0x0c62-0x0c65] (3 bytes)
+    13. b_gpu_status                      2 instrs  [0x0c62-0x0c65] (3 bytes)
+    14. b_gpu_compute                     2 instrs  [0x0c65-0x0c6b] (6 bytes)
+    15. b_gpu_mem_alloc                   2 instrs  [0x0c6b-0x0c73] (8 bytes)
+    16. b_gpu_mem_copy_to                 2 instrs  [0x0c74-0x0c77] (3 bytes)
+    17. b_gpu_mem_copy_from               2 instrs  [0x0c77-0x0c7a] (3 bytes)
+    18. b_gpu_mmio_read                   2 instrs  [0x0c7b-0x0c7e] (3 bytes)
+    19. b_gpu_status                      2 instrs  [0x0c62-0x0c65] (3 bytes)
+    20. b_gpu_benchmark                   2 instrs  [0x0c84-0x0c87] (3 bytes)
+    [GPU] 1 threads x 0 iters = 0.0M evals | range [0x0-0x1]
+    [GPU] Launching 1 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+
+  Baseline GPU fitness: 59.31
+
+  ── GPU Evolution + Security Analysis ──
+  Ratio allocation: scaling GPU time by function size
+  Total: 23 functions, 44 instructions
+
+  [1/23] b_gpu_vram_info                3 instrs [0x0c7f-0x0c84] → 0K iters
+    [GPU] 1024 threads x 100 iters = 0.1M evals | range [0xc7f-0xc84]
+    [GPU] Launching 4 blocks x 256 threads...
+    [GPU] Best: thread 0 fitness=59.31
+    Security: fragility=15.4% worst=59.31 avg_muts=9 [FRAGILE!] [CRITICAL VULNERABILITY]
+    no improvement (59.31)
+  [2/23] b_gpu_compute                  SKIP (too small)
+  [3/23] b_gpu_compute_done             SKIP (too small)
+  [4/23] b_gpu_mem_alloc                SKIP (too small)
+  [5/23] b_gpu_mem_free                 SKIP (too small)
+  [6/23] b_gpu_mem_copy_to              SKIP (too small)
+  [7/23] b_gpu_mem_copy_from            SKIP (too small)
+  [8/23] b_gpu_fence_wait               SKIP (too small)
+  [9/23] b_gpu_mmio_read                SKIP (too small)
+  [10/23] b_gpu_mmio_write               SKIP (too small)
+  [11/23] b_gpu_vram_info                SKIP (too small)
+  [12/23] b_gpu_benchmark                SKIP (too small)
+  [13/23] b_gpu_status                   SKIP (too small)
+  [14/23] b_gpu_compute                  SKIP (too small)
+  [15/23] b_gpu_mem_alloc                SKIP (too small)
+  [16/23] b_gpu_mem_copy_to              SKIP (too small)
+  [17/23] b_gpu_mem_copy_from            SKIP (too small)
+  [18/23] b_gpu_mmio_read                SKIP (too small)
+  [19/23] b_gpu_status                   SKIP (too small)
+  [20/23] b_gpu_benchmark                SKIP (too small)
+  [21/23] b_gpu_mmio_write               SKIP (too small)
+  [22/23] b_gpu_fence_wait               SKIP (too small)
+  [23/23] b_gpu_mem_free                 SKIP (too small)
+
+  ╔══════════════════════════════════════════════════════════════╗
+  ║              SECURITY & VULNERABILITY REPORT                ║
+  ╚══════════════════════════════════════════════════════════════╝
+
+  Summary: 1 analyzed | 1 critical | 0 fragile | 0 robust | 0 dead code
+
+  🔴 CRITICAL (>15% fitness drop from single mutation):
+     b_gpu_vram_info                fragility= 15.4% (3 instrs, 5 bytes)
+
+  🟢 MOST ROBUST (< 1% fitness drop):
+
+  ── Optimization Results ──
+
+=== GPU Evolution Complete: gpu_driver ===
+  Functions analyzed: 23
+  Functions improved: 0
+  Final GPU fitness: 59.31
+  Breakthroughs: 0
+
+========================================
+Total breakthroughs: 0
+Results saved to: experiment_b/results/

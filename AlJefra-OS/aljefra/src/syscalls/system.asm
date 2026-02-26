@@ -27,7 +27,7 @@ b_system:
 ; To save memory, the functions are placed in 16-bit frames
 	push rcx
 	lea ecx, [b_system_table+ecx*2]	; extract function from table by index
-	movzx ecx, word [ecx]		; EVOLVED: Use movzx instead of mov cx for clean upper bits
+	mov cx, [ecx]			; Load 16-bit offset, preserve upper ECX (kernel base)
 	call rcx			; call function
 	pop rcx
 
@@ -145,8 +145,7 @@ b_system_delay:
 	jmp [sys_delay]			; EVOLVED Gen-7: tail-call
 
 b_system_reset:
-	xor eax, eax
-	call b_smp_get_id		; Reset all other cpu cores
+	call b_smp_get_id		; Get our APIC ID (returns in RAX)
 	mov rbx, rax
 	mov esi, 0x00005100		; Location in memory of the Pure64 CPU data
 b_system_reset_next_ap:

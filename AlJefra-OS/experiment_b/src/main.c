@@ -217,11 +217,11 @@ static int evolve_component(component_id_t comp, int max_generations,
          *   large (31-50):       500K
          *   huge  (51+):         750K
          * This focuses GPU time where it matters most. */
-        #define ITERS_TINY    50000
-        #define ITERS_SMALL  150000
-        #define ITERS_MEDIUM 350000
-        #define ITERS_LARGE  500000
-        #define ITERS_HUGE   750000
+        #define ITERS_TINY    100
+        #define ITERS_SMALL  500
+        #define ITERS_MEDIUM 1000
+        #define ITERS_LARGE  2000
+        #define ITERS_HUGE   3000
 
         /* ── Security Analysis Storage ── */
         typedef struct {
@@ -604,6 +604,10 @@ static int evolve_component(component_id_t comp, int max_generations,
 }
 
 int main(int argc, char *argv[]) {
+    /* Force line-buffered stdout so output appears in real-time */
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+
     printf("AlJefra OS AI — Binary Evolution Engine\n");
     printf("========================================\n\n");
 

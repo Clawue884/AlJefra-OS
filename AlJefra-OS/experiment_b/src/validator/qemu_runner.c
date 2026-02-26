@@ -70,17 +70,26 @@ int qemu_build_image(const uint8_t *kernel_bin, uint32_t kernel_size,
     fclose(f);
 
     /* Build the disk image using aljefra.sh or direct dd.
-     * The AlJefra OS disk image layout:
-     *   Sector 0-2: Pure64 boot loader
-     *   Sector 3+:  Kernel binary
+     * AlJefra OS hybrid image layout (256MB):
+     *   - FAT32 partition: 0-128MB
+     *   - BMFS partition: 128MB+ (sector 32768 at 4K granularity)
+     *   - MBR loads from LBA 262160 (512-byte sectors)
+     *   - Pure64 boot loader at LBA 262160
+     *   - Kernel at BMFS sector offset (sector 10 at 4K = byte 40960 into BMFS)
      *
-     * We need the existing boot sectors + our modified kernel.
+     * For evolution: use the BIOS-only image if available, or patch
+     * the kernel at the correct offset in the hybrid image.
+     * BMFS starts at 128MB = offset 134217728. Kernel at sector 10
+     * of BMFS = offset 134217728 + 10*4096 = 134258688.
      */
     char cmd[1024];
+    #define BMFS_OFFSET      134217728UL  /* 128 MB */
+    #define KERNEL_SECTOR    10           /* Kernel at BMFS sector 10 */
+    #define KERNEL_IMG_OFF   (BMFS_OFFSET + KERNEL_SECTOR * 4096)
     snprintf(cmd, sizeof(cmd),
         "cp ../sys/aljefra_os.img %s/tmp/test.img 2>/dev/null && "
-        "dd if=%s of=%s/tmp/test.img bs=4096 seek=3 conv=notrunc 2>/dev/null",
-        work_dir, kernel_path, work_dir);
+        "dd if=%s of=%s/tmp/test.img bs=1 seek=%lu conv=notrunc 2>/dev/null",
+        work_dir, kernel_path, work_dir, KERNEL_IMG_OFF);
 
     if (system(cmd) != 0) {
         /* Try alternative: build from scratch */
@@ -109,23 +118,34 @@ int qemu_run_benchmark(const char *work_dir, int timeout_secs,
     /* Remove old serial log */
     unlink(serial_path);
 
-    /* Build QEMU command */
+    /* Build QEMU command.
+     * Key flags:
+     *   -display none -monitor none  — headless, no interactive monitor
+     *   -serial file:...             — capture serial output to file
+     *   -no-reboot                   — exit on triple fault instead of rebooting
+     *   -smp sockets=1,cpus=1        — avoid monitor/mwait UD on Westmere
+     *   -daemonize                   — detach from terminal immediately
+     * After daemonizing, sleep for timeout then kill.
+     */
     char cmd[2048];
+    char pidfile[512];
+    snprintf(pidfile, sizeof(pidfile), "%s/tmp/qemu.pid", work_dir);
     snprintf(cmd, sizeof(cmd),
-        "%s -machine %s -cpu %s -smp %s -m %s "
-        "-drive file=%s,format=raw,if=virtio "
-        "-device virtio-net-pci,netdev=net0 "
-        "-netdev user,id=net0 "
+        "%s -machine %s -cpu %s -smp sockets=1,cpus=1 -m %s "
+        "-drive file=%s,format=raw,if=ide "
         "-serial file:%s "
         "-display none "
+        "-monitor none "
         "-no-reboot "
-        "-nographic "
-        "& QEMU_PID=$!; "
+        "-pidfile %s "
+        "-daemonize 2>/dev/null; "
         "sleep %d; "
-        "kill $QEMU_PID 2>/dev/null; "
-        "wait $QEMU_PID 2>/dev/null",
-        QEMU_BINARY, QEMU_MACHINE, QEMU_CPU, QEMU_CORES, QEMU_MEMORY,
-        img_path, serial_path, timeout_secs);
+        "if [ -f %s ]; then kill $(cat %s) 2>/dev/null; rm -f %s; fi",
+        QEMU_BINARY, QEMU_MACHINE, QEMU_CPU, QEMU_MEMORY,
+        img_path, serial_path,
+        pidfile,
+        timeout_secs,
+        pidfile, pidfile, pidfile);
 
     int ret = system(cmd);
     (void)ret;

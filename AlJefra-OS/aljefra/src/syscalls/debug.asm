@@ -37,7 +37,7 @@ os_debug_dump_al:
 	push rax
 	push rbx
 	movzx ebx, al
-	shr bl, 4			; High nibble index
+	shr ebx, 4			; High nibble (32-bit shift avoids partial-reg stall)
 	mov al, [os_hex_table + rbx]	; EVOLVED: Direct table lookup, no branches
 	mov [tchar+0], al
 	movzx ebx, byte [rsp+8]	; Reload original AL from stack

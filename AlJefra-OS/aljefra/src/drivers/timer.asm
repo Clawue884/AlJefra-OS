@@ -62,6 +62,7 @@ init_timer_hpet:
 
 	; Verify there is a valid HPET address
 	mov rax, [os_HPET_Address]
+	test rax, rax			; mov doesn't set flags; must test explicitly
 	jz os_hpet_init_error
 
 	; Gather clock period
@@ -233,8 +234,7 @@ kvm_ns_wait:
 	mov rbx, [rdi+0x10]		; 64-bit system_time
 	mov ecx, [rdi+0x18]		; 32-bit tsc_to_system_mul
 	push rcx			; Save tsc_to_system_mul to stack
-	xor ecx, ecx
-	mov cl, [rdi+0x1C]		; 8-bit tsc_shift
+	movzx ecx, byte [rdi+0x1C]	; 8-bit tsc_shift (zero-extends to full ECX)
 
 	; Calculate timer delta (CPU TSC - tsc_timestamp)
 	sub r9, rax
@@ -290,8 +290,7 @@ kvm_delay:
 	push rax
 
 	; Multiply time by 1000 to convert to nanoseconds
-	mov ecx, 1000
-	mul rcx				; RDX:RAX = RAX * RCX
+	imul rax, rax, 1000		; Single instruction, doesn't clobber RCX/RDX
 
 	mov rbx, rax			; Store delay in RBX
 	call kvm_ns

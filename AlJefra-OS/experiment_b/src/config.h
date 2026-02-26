@@ -51,7 +51,7 @@ typedef enum {
 extern const char *component_names[COMP_COUNT];
 
 /* ── Genetic Algorithm Parameters ────────────────────────────────── */
-#define GA_POPULATION_SIZE     65536   /* 64K — fills the RTX 5090 */
+#define GA_POPULATION_SIZE     1024    /* 1K threads — fast security sweep */
 #define GA_ELITE_COUNT         64
 #define GA_TOURNAMENT_SIZE     8
 #define GA_MUTATION_RATE       0.15    /* 15% chance per instruction */
@@ -74,8 +74,8 @@ typedef enum {
 /* ── Fitness / Benchmark ─────────────────────────────────────────── */
 #define FITNESS_PREDICT_BATCH  4096    /* Candidates per batch */
 #define FITNESS_TOP_N          10      /* Top predictions → QEMU test */
-#define QEMU_TIMEOUT_SECS      15     /* Max time per QEMU benchmark */
-#define QEMU_BOOT_GRACE_SECS   5      /* Wait for OS to boot */
+#define QEMU_TIMEOUT_SECS      8      /* Max time per QEMU benchmark */
+#define QEMU_BOOT_GRACE_SECS   3      /* Wait for OS to boot */
 #define BREAKTHROUGH_THRESHOLD 5.0     /* Minimum % improvement */
 
 /* ── QEMU Configuration ─────────────────────────────────────────── */
