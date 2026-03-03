@@ -12,3 +12,12 @@ experiment_b/build/
 experiment_b/evolve_bin
 experiment_b/tmp/
 programs/netstack/bearssl/build/
+
+# Private keys and secrets — NEVER commit these
+*.key
+!verify.key
+server/keys/signing.key
+.env
+.env.*
+*.pem
+*.p12
