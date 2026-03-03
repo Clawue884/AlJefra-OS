@@ -60,6 +60,15 @@ jobs:
           path: build/${{ matrix.arch }}/bin/
           retention-days: 30
 
+  check-docs:
+    name: Documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Check documentation consistency
+        run: python3 tools/doc_check.py
+
   boot-test:
     name: Boot test (x86_64 QEMU)
     runs-on: ubuntu-latest

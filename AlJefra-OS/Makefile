@@ -125,7 +125,7 @@ ALL_OBJS = $(ARCH_S_OBJS) $(ARCH_C_OBJS) $(PLATFORM_OBJS) $(KERNEL_OBJS) \
 
 # ── Targets ──
 
-.PHONY: all clean all-arch info
+.PHONY: all clean all-arch info check-docs
 
 all: $(KERNEL_BIN)
 	@echo "Built $(KERNEL_BIN) for $(ARCH)"
@@ -174,6 +174,10 @@ all-arch:
 # Clean
 clean:
 	rm -rf build/
+
+# Documentation consistency check
+check-docs:
+	@python3 tools/doc_check.py
 
 # Info
 info:

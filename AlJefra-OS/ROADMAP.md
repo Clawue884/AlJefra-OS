@@ -22,11 +22,11 @@ AlJefra OS is the world's first AI-native, self-evolving operating system — bu
 - [x] 22+ portable C drivers (storage, network, input, display, bus)
 - [x] PCIe bus enumeration + device matching
 - [x] SMP scheduler
-- [x] 200+ kernel optimizations across 11 evolution generations
+- [x] 52 kernel optimizations across 10 evolution generations
 
 ### B. Networking (DONE)
 - [x] TCP/IP stack (TCP client, ARP, IPv4, ICMP)
-- [x] TLS 1.3 via BearSSL
+- [x] TLS 1.2 via BearSSL
 - [x] HTTP/1.1 client (chunked + content-length)
 - [x] DNS resolver
 - [x] DHCP (kernel bootstrap path)
@@ -51,7 +51,7 @@ AlJefra OS is the world's first AI-native, self-evolving operating system — bu
 - [x] In-kernel filesystem API (fs.h/fs.c, 796 lines — BMFS read/write/list/create/delete)
 - [x] Embed real Ed25519 public key (ed25519_key.h, deterministic test key)
 - [x] Wire Claude API as default AI backend (via ai_chat LLM callback)
-- [x] DHCP client (dhcp.h/dhcp.c, 226 lines — full DORA + retry)
+- [x] DHCP client (dhcp.h/dhcp.c, 382 lines — full DORA + retry)
 - [ ] Marketplace TLS (kernel client) — uses existing BearSSL TLS stack
 - [ ] Real .ajdrv packages for top 5 drivers
 - [x] OTA update: download → stage → verify → apply (ota.h/ota.c, 744 lines)
@@ -59,7 +59,7 @@ AlJefra OS is the world's first AI-native, self-evolving operating system — bu
 - [ ] Fix 8KB driver download buffer
 
 ### G. AI Chat System (DONE)
-- [x] Chat engine (input → AI → parse → execute) — ai_chat.c, 2,081 lines
+- [x] Chat engine (input → AI → parse → execute) — ai_chat.c, 1,815 lines
 - [x] Natural language → system commands (37+ English patterns, 32 Arabic patterns)
 - [x] Command verification (needs_confirm flag on destructive actions)
 - [x] Offline local NLP parser (instant, no network needed)

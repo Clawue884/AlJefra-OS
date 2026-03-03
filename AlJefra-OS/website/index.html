@@ -13,6 +13,7 @@
     <nav>
         <div class="nav-inner">
             <div class="logo">AlJefra OS</div>
+            <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('active');this.classList.toggle('active')"><span></span><span></span><span></span></button>
             <ul class="nav-links">
                 <li><a href="index.html">Home</a></li>
                 <li><a href="docs.html">Docs</a></li>
@@ -20,6 +21,7 @@
                 <li><a href="marketplace.html">Marketplace</a></li>
                 <li><a href="roadmap.html">Roadmap</a></li>
                 <li><a href="download.html">Download</a></li>
+                <li><a href="https://github.com/qatarit-com/AlJefra-OS" class="nav-github" target="_blank"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></li>
             </ul>
         </div>
     </nav>
@@ -48,11 +50,11 @@
             <div class="label">Drivers</div>
         </div>
         <div class="stat">
-            <div class="number">90,000+</div>
+            <div class="number">67,000+</div>
             <div class="label">Lines of Code</div>
         </div>
         <div class="stat">
-            <div class="number">1,500+</div>
+            <div class="number">875+</div>
             <div class="label">Files</div>
         </div>
     </div>
@@ -75,7 +77,7 @@
             <div class="feature-card">
                 <div class="icon">🧬</div>
                 <h3>Self-Evolving Kernel</h3>
-                <p>No other OS evolves its own kernel. AlJefra OS uses dual evolution: AI-directed source optimization (200+ safe transforms across 11 generations) and GPU-accelerated genetic algorithms that mutate and test kernel binaries at machine speed.</p>
+                <p>No other OS evolves its own kernel. AlJefra OS uses dual evolution: AI-directed source optimization (52 optimizations across 10 generations) and GPU-accelerated genetic algorithms that mutate and test kernel binaries at machine speed.</p>
             </div>
             <div class="feature-card">
                 <div class="icon">🌍</div>
@@ -90,12 +92,12 @@
             <div class="feature-card">
                 <div class="icon">🤖</div>
                 <h3>Built-in AI Agent</h3>
-                <p>A full TCP/IP + TLS + HTTPS stack built into the kernel enables direct communication with Claude AI. The OS can diagnose issues, recommend optimizations, and configure itself — no external tools needed.</p>
+                <p>A built-in NLP chat engine understands English and Arabic commands, mapping natural language to 20 system actions. When online, the network stack (TCP/IP + TLS via BearSSL) enables connection to external LLM backends for advanced reasoning.</p>
             </div>
             <div class="feature-card">
                 <div class="icon">⚡</div>
                 <h3>GPU Compute from Assembly</h3>
-                <p>A 951-line NVIDIA RTX 5090 driver with VRAM management, command queues, and compute dispatch. The most advanced GPU support in any independent OS, enabling neural network inference directly from the kernel.</p>
+                <p>An experimental 952-line NVIDIA GPU driver stub with MMIO register definitions, VRAM management structures, and command queue layout. Display output uses the proven Bochs VBE framebuffer driver.</p>
             </div>
             <div class="feature-card">
                 <div class="icon">🔒</div>
@@ -155,7 +157,7 @@
                     </tr>
                     <tr>
                         <td>GPU Compute</td>
-                        <td style="color: var(--accent-green);">RTX 5090 driver</td>
+                        <td style="color: var(--accent-green);">Bochs VBE + experimental GPU stub</td>
                         <td>No</td>
                         <td>No</td>
                         <td>Partial</td>
@@ -163,7 +165,7 @@
                     </tr>
                     <tr>
                         <td>Full Network Stack</td>
-                        <td style="color: var(--accent-green);">TCP/IP + TLS + AI</td>
+                        <td style="color: var(--accent-green);">TCP/IP + TLS (BearSSL)</td>
                         <td>Raw packets</td>
                         <td>Yes</td>
                         <td>Yes</td>
@@ -179,7 +181,7 @@
                     </tr>
                     <tr>
                         <td>Kernel Size</td>
-                        <td>20 KB ASM / 145 KB HAL</td>
+                        <td>~987 KB ELF (148 KB text)</td>
                         <td>16 KB</td>
                         <td>~16k lines</td>
                         <td>~100k lines</td>
@@ -222,7 +224,7 @@
             <div class="feature-card">
                 <div class="icon">⚡</div>
                 <h3>Self-Evolving Kernel</h3>
-                <p>AI-directed source optimization and GPU-accelerated genetic algorithms continuously improve the kernel. 200+ optimizations applied across 11 generations.</p>
+                <p>AI-directed source optimization and GPU-accelerated genetic algorithms continuously improve the kernel. 52 optimizations applied across 10 generations.</p>
             </div>
         </div>
     </section>

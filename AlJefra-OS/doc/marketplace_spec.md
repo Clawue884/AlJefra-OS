@@ -351,19 +351,22 @@ kernel loader rejects any file that does not match this magic.
 
 | Code | Architecture | Description                         |
 |------|-------------|--------------------------------------|
-| 1    | x86_64      | AMD64 / Intel 64-bit                 |
-| 2    | aarch64     | ARM 64-bit (ARMv8-A and later)       |
-| 3    | riscv64     | RISC-V 64-bit (RV64GC)              |
+| 0    | x86_64      | AMD64 / Intel 64-bit                 |
+| 1    | aarch64     | ARM 64-bit (ARMv8-A and later)       |
+| 2    | riscv64     | RISC-V 64-bit (RV64GC)              |
+| 0xFF | any         | Architecture-independent (data)      |
 
 ### Driver Category Codes
 
 | Code | Category | Description                                |
 |------|----------|--------------------------------------------|
-| 1    | storage  | Block devices, disk controllers, NVMe      |
-| 2    | network  | Ethernet, WiFi, virtual NICs               |
-| 3    | input    | Keyboard, mouse, touchpad, gamepad         |
-| 4    | display  | GPU, framebuffer, VGA                      |
+| 0    | storage  | Block devices, disk controllers, NVMe      |
+| 1    | network  | Ethernet, WiFi, virtual NICs               |
+| 2    | input    | Keyboard, mouse, touchpad, gamepad         |
+| 3    | display  | GPU, framebuffer, VGA                      |
+| 4    | gpu      | Dedicated GPU drivers                      |
 | 5    | bus      | PCI, USB, I2C, SPI host controllers        |
+| 6    | other    | Miscellaneous drivers                      |
 
 ### Flags
 

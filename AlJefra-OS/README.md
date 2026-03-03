@@ -34,7 +34,7 @@ A single portable codebase compiles for all three supported architectures.
 - **Driver Marketplace** -- Over-the-air driver store where vendors publish signed `.ajdrv` packages that the OS downloads at runtime.
 - **Hardware Abstraction Layer (HAL)** -- A clean, portable HAL lets every driver and kernel subsystem compile once and run on all three architectures.
 - **22 Portable Drivers** -- Storage (NVMe, AHCI, VirtIO-blk), networking (e1000, VirtIO-net, RTL8169), display (Bochs VBE, serial console), input (PS/2, USB HID), and more.
-- **Full Network Stack** -- Ethernet, ARP, IPv4, UDP, DHCP, DNS, and TCP. TLS 1.3 provided by vendored BearSSL library.
+- **Full Network Stack** -- Ethernet, ARP, IPv4, UDP, DHCP, DNS, and TCP. TLS 1.2 provided by vendored BearSSL library.
 - **GPU & GUI Desktop** -- Framebuffer-based GPU engine, window manager, desktop shell, and graphical applications.
 - **Hot-Load Drivers** -- The kernel can load new `.ajdrv` driver packages at runtime without a restart.
 - **Self-Evolving Kernel** -- AI-directed source optimization and GPU-accelerated genetic algorithms for kernel improvement (52 optimizations across 10 generations).

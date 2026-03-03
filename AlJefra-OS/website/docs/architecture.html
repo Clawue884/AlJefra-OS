@@ -9,17 +9,18 @@
 </head>
 <body>
     <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="nav-brand">
-                <a href="../index.html">AlJefra OS</a>
-            </div>
+    <nav>
+        <div class="nav-inner">
+            <div class="nav-brand"><a href="../index.html">AlJefra OS</a></div>
+            <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('active');this.classList.toggle('active')"><span></span><span></span><span></span></button>
             <ul class="nav-links">
+                <li><a href="../index.html">Home</a></li>
                 <li><a href="../docs.html">Docs</a></li>
                 <li><a href="../architecture.html">Architecture</a></li>
                 <li><a href="../marketplace.html">Marketplace</a></li>
                 <li><a href="../roadmap.html">Roadmap</a></li>
                 <li><a href="../download.html">Download</a></li>
+                <li><a href="https://github.com/qatarit-com/AlJefra-OS" class="nav-github" target="_blank"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></li>
             </ul>
         </div>
     </nav>
@@ -153,21 +154,21 @@ AlJefra-OS/
                 <tbody>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 0.5rem;">x86-64</td>
-                        <td style="padding: 0.5rem;">Production</td>
+                        <td style="padding: 0.5rem;">Verified</td>
                         <td style="padding: 0.5rem;">BIOS/UEFI via Pure64</td>
                         <td style="padding: 0.5rem;">APIC/IO-APIC</td>
                         <td style="padding: 0.5rem;">HPET/KVM</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 0.5rem;">AArch64</td>
-                        <td style="padding: 0.5rem;">Development</td>
+                        <td style="padding: 0.5rem;">Verified</td>
                         <td style="padding: 0.5rem;">UEFI/DTB</td>
                         <td style="padding: 0.5rem;">GICv2/v3</td>
                         <td style="padding: 0.5rem;">Generic Timer</td>
                     </tr>
                     <tr>
                         <td style="padding: 0.5rem;">RISC-V 64</td>
-                        <td style="padding: 0.5rem;">Planned</td>
+                        <td style="padding: 0.5rem;">Verified</td>
                         <td style="padding: 0.5rem;">SBI/UEFI</td>
                         <td style="padding: 0.5rem;">PLIC/CLINT</td>
                         <td style="padding: 0.5rem;">mtime CSR</td>

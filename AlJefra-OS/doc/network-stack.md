@@ -151,7 +151,7 @@ The DNS resolver translates hostnames to IPv4 addresses:
 
 ## DHCP
 
-**Source**: `net/dhcp.c` (226 lines)
+**Source**: `net/dhcp.c` (382 lines)
 
 The DHCP client implements the full DORA flow for automatic network configuration:
 
