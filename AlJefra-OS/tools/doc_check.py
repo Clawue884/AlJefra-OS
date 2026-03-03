@@ -476,7 +476,9 @@ def check_total_loc(filepath, lines, truth, mismatches):
         # Match patterns like "67,295 lines of original C and Assembly",
         # "67,000+ Lines of Code", "~61,000 lines (original code)"
         # Only for large numbers (> 10k) to avoid component-level claims.
-        pat = r"([\d,]+)\+?\s*[Ll]ines\s+(?:of\s+)?(?:\(?[Oo]riginal\s+)?[Cc]ode"
+        # Matches: "N lines of code", "N lines of original code",
+        #          "N lines (original code)", "N lines of original C and Assembly"
+        pat = r"([\d,]+)\+?\s*[Ll]ines\s+(?:of\s+)?(?:\(?[Oo]riginal\s+)?(?:[Cc]ode|C\s+and\s+[Aa]ssembly)"
         for m in re.finditer(pat, line):
             claimed = int(m.group(1).replace(",", ""))
             if claimed < 10000:
@@ -776,6 +778,36 @@ def check_inline_numeric_claims(filepath, lines, truth, mismatches):
                          fix_new=new_full)
 
 
+def check_badge_claims(filepath, lines, truth, mismatches):
+    """Check shield.io badge URLs for line count claims.
+
+    Matches URL-encoded patterns like:
+        lines%20of%20code-67%2C295-orange.svg
+    """
+    actual = truth.get("original_loc")
+    if actual is None:
+        return
+    for i, line in enumerate(lines, 1):
+        for m in re.finditer(r"lines%20of%20code-([\d%A-Fa-f]+)-", line):
+            claimed_str = m.group(1).replace("%2C", ",").replace(",", "")
+            try:
+                claimed = int(claimed_str)
+            except ValueError:
+                continue
+            if not within_tolerance(claimed, actual, 5):
+                old_val = m.group(1)
+                new_val = f"{actual:,}".replace(",", "%2C")
+                _add(mismatches,
+                     file=filepath, line=i,
+                     category="badge LOC",
+                     expected=f"{actual:,}",
+                     actual=f"{claimed:,}",
+                     context=line.strip()[:120],
+                     fixable=True,
+                     fix_old=f"lines%20of%20code-{old_val}-",
+                     fix_new=f"lines%20of%20code-{new_val}-")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  Main scan orchestrator
 # ═══════════════════════════════════════════════════════════════════════
@@ -784,6 +816,7 @@ ALL_CHECKS = [
     check_tls_version,
     check_magic_number,
     check_arch_encoding,
+    check_badge_claims,
     check_driver_count,
     check_hal_header_count,
     check_arch_count,

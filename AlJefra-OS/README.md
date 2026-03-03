@@ -12,7 +12,7 @@
   <a href="https://github.com/qatarit-com/AlJefra-OS/actions"><img src="https://img.shields.io/github/actions/workflow/status/qatarit-com/AlJefra-OS/build.yml?branch=main&label=build" alt="Build Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="#supported-architectures"><img src="https://img.shields.io/badge/arch-x86--64%20%7C%20ARM64%20%7C%20RISC--V%2064-green.svg" alt="Architectures"></a>
-  <a href="#"><img src="https://img.shields.io/badge/lines%20of%20code-67%2C295-orange.svg" alt="Lines of Code"></a>
+  <a href="#"><img src="https://img.shields.io/badge/lines%20of%20code-61%2C664-orange.svg" alt="Lines of Code"></a>
   <a href="#"><img src="https://img.shields.io/badge/drivers-22%2B-purple.svg" alt="Drivers"></a>
   <a href="https://os.aljefra.com"><img src="https://img.shields.io/badge/website-os.aljefra.com-blue" alt="Website"></a>
 </p>
@@ -23,7 +23,7 @@
 
 ## Overview
 
-AlJefra OS v1.0 is a ground-up operating system written in **67,295 lines of original C and Assembly** (plus 101,889 lines of vendored BearSSL for TLS). It boots with a minimal kernel on any supported architecture, then uses an onboard AI agent to detect hardware, connect to the AlJefra Driver Marketplace, and automatically download, install, and configure every driver the machine needs -- all without human intervention.
+AlJefra OS v1.0 is a ground-up operating system written in **61,664 lines of original C and Assembly** (plus 101,889 lines of vendored BearSSL for TLS). It boots with a minimal kernel on any supported architecture, then uses an onboard AI agent to detect hardware, connect to the AlJefra Driver Marketplace, and automatically download, install, and configure every driver the machine needs -- all without human intervention.
 
 A single portable codebase compiles for all three supported architectures.
 
