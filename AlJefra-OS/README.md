@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/aljefra-logo.png" alt="AlJefra OS" width="200">
+  <img src="images/AlJefra OS Logo.svg" alt="AlJefra OS" width="400">
 </p>
 
 <h1 align="center">AlJefra OS</h1>
