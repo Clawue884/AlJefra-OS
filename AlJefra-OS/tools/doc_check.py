@@ -177,8 +177,8 @@ def extract_ground_truth(repo):
     all_files = [p for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts]
     truth["total_files"] = len(all_files)
 
-    # Source files (excluding BearSSL)
-    src_exts = {".c", ".h", ".asm", ".S", ".py"}
+    # Source files (excluding BearSSL and Python tooling)
+    src_exts = {".c", ".h", ".asm", ".S"}
     src_files = list(rglob_files(repo, src_exts, exclude_parts=["bearssl"]))
     truth["source_file_count"] = len(src_files)
 
@@ -205,10 +205,12 @@ def extract_ground_truth(repo):
     truth["net_lines"] = dir_lines("net")
     truth["dhcp_lines"] = file_lines("net/dhcp.c")
 
-    # x86 ASM kernel
+    # x86 ASM kernel (may be at src/ or aljefra/src/)
     src_asm = 0
-    for ext in (".asm", ".S"):
-        src_asm += sum_lines(rglob_files(repo / "src", {ext})) if (repo / "src").exists() else 0
+    for base in ["src", "aljefra/src"]:
+        base_dir = repo / base
+        if base_dir.exists():
+            src_asm += sum_lines(rglob_files(base_dir, {".asm"}))
     truth["x86_asm_lines"] = src_asm
 
     # HAL + arch ports
@@ -247,13 +249,63 @@ def extract_ground_truth(repo):
                     gens.add(obj["generation"])
             except (json.JSONDecodeError, KeyError):
                 pass
-        truth["evolution_generations"] = len(gens)
+        truth["evolution_generations"] = max(gens) if gens else 0
 
     # ── Marketplace endpoints ─────────────────────────────────────
     app_py = repo / "server" / "app.py"
     if app_py.exists():
         src = app_py.read_text()
         truth["marketplace_routes"] = len(re.findall(r"@app\.route", src))
+        # Unique endpoint paths (excluding index /)
+        route_paths = set()
+        for rm in re.finditer(r"@app\.route\(['\"]([^'\"]+)['\"]", src):
+            rp = rm.group(1)
+            if rp != "/":
+                route_paths.add(rp)
+        truth["marketplace_unique_endpoints"] = len(route_paths)
+
+    # ── Net stack total (net/ + programs/netstack/ excluding BearSSL) ──
+    net_stack_total = dir_lines("net")
+    netstack_dir = repo / "programs" / "netstack"
+    if netstack_dir.exists():
+        net_stack_total += sum_lines(
+            rglob_files(netstack_dir, {".c", ".h"}, exclude_parts=["bearssl"])
+        )
+    truth["net_stack_lines"] = net_stack_total
+
+    # ── AI bootstrap lines ────────────────────────────────────────
+    truth["ai_bootstrap_lines"] = file_lines("kernel/ai_bootstrap.c")
+
+    # ── Marketplace server lines (Python) ─────────────────────────
+    server_dir = repo / "server"
+    if server_dir.exists():
+        truth["marketplace_server_lines"] = sum_lines(server_dir.glob("*.py"))
+
+    # ── Evolution framework lines ─────────────────────────────────
+    evo_dir = repo / "evolution"
+    if evo_dir.exists():
+        truth["evolution_lines"] = sum_lines(
+            rglob_files(evo_dir, {".c", ".h", ".py", ".json", ".jsonl"})
+        )
+
+    # ── Website lines ─────────────────────────────────────────────
+    web_dir = repo / "website"
+    if web_dir.exists():
+        truth["website_lines"] = sum_lines(
+            rglob_files(web_dir, {".html", ".css", ".js"})
+        )
+
+    # ── Action type count (from ai_chat.h enum) ──────────────────
+    ai_chat_h = repo / "kernel" / "ai_chat.h"
+    if ai_chat_h.exists():
+        h_src = ai_chat_h.read_text()
+        enum_m = re.search(r"enum\s*\{([^}]+)\}", h_src, re.DOTALL)
+        if enum_m:
+            action_names = set(re.findall(
+                r"\b(ACTION_(?!NONE\b|COUNT\b|NAME_COUNT\b)\w+)",
+                enum_m.group(1),
+            ))
+            truth["action_type_count"] = len(action_names)
 
     return truth
 
@@ -421,20 +473,31 @@ def check_total_loc(filepath, lines, truth, mismatches):
     if actual is None:
         return
     for i, line in enumerate(lines, 1):
-        # Match patterns like "67,295 lines of original C and Assembly"
-        # or "67,000+ Lines of Code" -- but only for large numbers (> 10k)
-        # to avoid matching component-level claims like "5,165 lines of code"
-        for m in re.finditer(r"([\d,]+)\+?\s*[Ll]ines\s+(?:of\s+)?(?:[Oo]riginal\s+)?[Cc]ode", line):
+        # Match patterns like "67,295 lines of original C and Assembly",
+        # "67,000+ Lines of Code", "~61,000 lines (original code)"
+        # Only for large numbers (> 10k) to avoid component-level claims.
+        pat = r"([\d,]+)\+?\s*[Ll]ines\s+(?:of\s+)?(?:\(?[Oo]riginal\s+)?[Cc]ode"
+        for m in re.finditer(pat, line):
             claimed = int(m.group(1).replace(",", ""))
             if claimed < 10000:
                 continue  # Skip component-level line counts
-            if not within_tolerance(claimed, actual, 10):
+            if not within_tolerance(claimed, actual, 5):
+                old_num = m.group(1)
+                # Preserve format: round to 1000 for approximate claims
+                if claimed % 1000 == 0:
+                    fix_actual = (actual // 1000) * 1000
+                else:
+                    fix_actual = actual
+                new_num = f"{fix_actual:,}"
                 _add(mismatches,
                      file=filepath, line=i,
                      category="total LOC",
                      expected=f"~{actual:,}",
                      actual=f"{claimed:,}",
-                     context=line.strip())
+                     context=line.strip(),
+                     fixable=True,
+                     fix_old=old_num,
+                     fix_new=new_num)
 
 
 def check_file_count(filepath, lines, truth, mismatches):
@@ -547,6 +610,172 @@ def check_component_lines(filepath, lines, truth, mismatches):
                          context=line.strip())
 
 
+def check_html_stat_boxes(filepath, lines, truth, mismatches):
+    """Check standalone numbers in HTML stat/metric boxes.
+
+    Detects consecutive-line patterns like:
+        <div ...>61,657</div>
+        <div ...>Lines of Original Code</div>
+    """
+    LABEL_MAP = [
+        # (label_regex, truth_key, exact_match)
+        (r"Lines\s+of\s+Original\s+Code", "original_loc", True),
+        (r"Lines\s+of\s+Code",            "original_loc", False),
+        (r"v1\.0\s+Target",               "original_loc", False),
+    ]
+    for i, line in enumerate(lines, 1):
+        m = re.search(r">(~?[\d,]+\+?)</", line)
+        if not m:
+            continue
+        raw = m.group(1)
+        num_str = raw.replace(",", "").replace("+", "").replace("~", "")
+        try:
+            claimed = int(num_str)
+        except ValueError:
+            continue
+        if claimed < 1000:
+            continue
+        # Check next line for a label
+        if i >= len(lines):
+            continue
+        next_line = lines[i]  # 0-indexed: lines[i] is line i+1
+        for label_pat, truth_key, exact in LABEL_MAP:
+            if not re.search(label_pat, next_line, re.IGNORECASE):
+                continue
+            actual = truth.get(truth_key)
+            if actual is None:
+                continue
+            if exact:
+                if claimed != actual:
+                    new_val = f"{actual:,}"
+                    _add(mismatches,
+                         file=filepath, line=i,
+                         category="stat box (exact LOC)",
+                         expected=new_val,
+                         actual=raw,
+                         context=line.strip(),
+                         fixable=True,
+                         fix_old=f">{raw}</",
+                         fix_new=f">{new_val}</")
+            else:
+                approx = (actual // 1000) * 1000
+                has_plus = "+" in raw
+                if claimed != approx:
+                    new_val = f"{approx:,}" + ("+" if has_plus else "")
+                    _add(mismatches,
+                         file=filepath, line=i,
+                         category="stat box (approx LOC)",
+                         expected=new_val,
+                         actual=raw,
+                         context=line.strip(),
+                         fixable=True,
+                         fix_old=f">{raw}</",
+                         fix_new=f">{new_val}</")
+            break
+
+
+def check_roadmap_component_table(filepath, lines, truth, mismatches):
+    """Check per-component line counts in HTML table rows.
+
+    Matches roadmap rows like:
+        <tr><td>x86-64 ASM Kernel</td><td>9,102</td><td ...>Status</td></tr>
+    and validates the number against the corresponding ground truth.
+    """
+    COMPONENT_MAP = [
+        (r"x86.64\s+ASM\s+Kernel",                    "x86_asm_lines"),
+        (r"HAL\s*\+\s*\d+\s+Architecture\s+Ports?",   "hal_arch_lines"),
+        (r"\d+\s+Portable\s+C\s+Drivers",             "driver_lines"),
+        (r"TCP/IP",                                    "net_stack_lines"),
+        (r"Ed25519\s+Cryptography",                    "verify_c_lines"),
+        (r"AI\s+Agent.*Claude",                        "ai_bootstrap_lines"),
+        (r"Driver\s+Marketplace\s+Server",             "marketplace_server_lines"),
+        (r"AI\s+Evolution\s+Framework",                "evolution_lines"),
+        (r"Website.*aljefra",                          "website_lines"),
+    ]
+    for i, line in enumerate(lines, 1):
+        for comp_pat, truth_key in COMPONENT_MAP:
+            actual = truth.get(truth_key)
+            if actual is None or actual == 0:
+                continue
+            if not re.search(comp_pat, line, re.IGNORECASE):
+                continue
+            # Find the first numeric <td> after the component name (handles ~N prefix)
+            td_nums = re.findall(r"</td>\s*<td[^>]*>\s*~?([\d,]+)\s*</td>", line)
+            if not td_nums:
+                continue
+            claimed_str = td_nums[0].replace(",", "")
+            try:
+                claimed = int(claimed_str)
+            except ValueError:
+                continue
+            if claimed < 50:
+                continue
+            if not within_tolerance(claimed, actual, 0.5):
+                old_val = td_nums[0]
+                new_val = f"{actual:,}"
+                # Handle ~N prefix in original HTML
+                td_match = re.search(
+                    r"</td>\s*<td[^>]*>\s*(~?" + re.escape(old_val) + r")\s*</td>",
+                    line,
+                )
+                fix_old_val = td_match.group(1) if td_match else old_val
+                _add(mismatches,
+                     file=filepath, line=i,
+                     category=f"roadmap component ({truth_key})",
+                     expected=new_val,
+                     actual=fix_old_val,
+                     context=line.strip()[:120],
+                     fixable=True,
+                     fix_old=f">{fix_old_val}</td>",
+                     fix_new=f">{new_val}</td>")
+            break
+
+
+def check_inline_numeric_claims(filepath, lines, truth, mismatches):
+    """Check inline numeric claims in prose/HTML text.
+
+    Catches patterns like '1,547 lines of pure C cryptography',
+    '19 system actions', '9-header HAL', 'N Endpoints', 'N Generations'.
+    """
+    CHECKS = [
+        (r"([\d,]+)\s+lines?\s+of\s+(?:pure\s+)?C\s+cryptography",
+         "verify_c_lines", "Ed25519 inline LOC"),
+        (r"(\d+)\s+system\s+actions?",
+         "action_type_count", "action type count"),
+        (r"(\d+)-header\s+HAL",
+         "hal_header_count", "HAL header inline count"),
+        (r"(\d+)\s+[Ee]ndpoints?",
+         "marketplace_unique_endpoints", "endpoint count"),
+        (r"(\d+)\s+[Gg]enerations?",
+         "evolution_generations", "evolution generations"),
+    ]
+    for i, line in enumerate(lines, 1):
+        for pat, truth_key, cat in CHECKS:
+            actual = truth.get(truth_key)
+            if actual is None:
+                continue
+            for m in re.finditer(pat, line):
+                claimed_str = m.group(1).replace(",", "")
+                try:
+                    claimed = int(claimed_str)
+                except ValueError:
+                    continue
+                if claimed != actual:
+                    old_full = m.group(0)
+                    old_num = m.group(1)
+                    new_num = f"{actual:,}" if actual >= 1000 else str(actual)
+                    new_full = old_full.replace(old_num, new_num, 1)
+                    _add(mismatches,
+                         file=filepath, line=i,
+                         category=cat,
+                         expected=str(actual),
+                         actual=str(claimed),
+                         context=line.strip()[:120],
+                         fixable=True,
+                         fix_old=old_full,
+                         fix_new=new_full)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  Main scan orchestrator
 # ═══════════════════════════════════════════════════════════════════════
@@ -563,6 +792,9 @@ ALL_CHECKS = [
     check_source_file_count,
     check_bearssl_loc,
     check_component_lines,
+    check_html_stat_boxes,
+    check_roadmap_component_table,
+    check_inline_numeric_claims,
 ]
 
 
@@ -645,10 +877,8 @@ def fix_docs(mismatches):
 
 def auto_detect_website_dir(repo):
     """Try common locations for the AlJefra OS website HTML files."""
-    # Typical layout:
-    #   /home/user/aljefra/aljefra_os/               ← website
-    #   /home/user/aljefra/aljefra_os/os_ai/AlJefra-OS/ ← code repo
     for candidate in [
+        repo / "website",                  # website/ subdirectory of repo
         repo.parent.parent,               # os_ai/AlJefra-OS → os_ai → aljefra_os
         repo.parent,                       # one level up
     ]:

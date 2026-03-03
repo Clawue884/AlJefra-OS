@@ -39,7 +39,7 @@ A single portable codebase compiles for all three supported architectures.
 - **Hot-Load Drivers** -- The kernel can load new `.ajdrv` driver packages at runtime without a restart.
 - **Self-Evolving Kernel** -- AI-directed source optimization and GPU-accelerated genetic algorithms for kernel improvement (52 optimizations across 10 generations).
 - **BMFS Filesystem** -- BareMetal File System support for persistent storage.
-- **AI Chat Interface** -- Built-in NLP chat engine with pattern-matching for English and Arabic, mapping natural language to 20 system actions. External LLM backends supported when online.
+- **AI Chat Interface** -- Built-in NLP chat engine with pattern-matching for English and Arabic, mapping natural language to 19 system actions. External LLM backends supported when online.
 - **Bilingual Interface** -- Full Arabic and English language support throughout the UI.
 
 ## Architecture
