@@ -2,6 +2,14 @@
 /* AlJefra OS -- RISC-V 64-bit Master HAL Initialization
  * Implements hal_init() for RISC-V, calling all subsystem init functions
  * in the correct order.
+ *
+ * On RISC-V (and AArch64), boot.S jumps directly to hal_init() after
+ * setting up the stack and zeroing BSS — there is no separate start.c
+ * shim (unlike x86-64 which needs one for Multiboot1 entry).
+ *
+ * Init order: Console → CPU → IRQ → Timer → MMU → Bus → SMP
+ * (IRQ before MMU, unlike x86-64 which does MMU before IRQ because
+ * the x86-64 identity map is already set up by Pure64/bootloader.)
  */
 
 #include "../../hal/hal.h"

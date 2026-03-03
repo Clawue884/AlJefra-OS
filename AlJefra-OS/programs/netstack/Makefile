@@ -8,7 +8,11 @@ LD = ld
 NASM = nasm
 
 # Paths
-DEMO_SRC = ../../src/aljefra-demo/src
+# TODO: crt0.c was previously at ../../src/aljefra-demo/src which no longer
+# exists.  The application targets (ai_agent.app, nettest.app, minitest.app,
+# tlstest.app) that depend on crt0.o are disabled until a replacement runtime
+# startup stub is provided.
+# DEMO_SRC = ../../src/aljefra-demo/src
 API_SRC = ../../aljefra/api
 BEARSSL_DIR = bearssl
 
@@ -51,20 +55,21 @@ BEARSSL_SRCS = $(wildcard $(BEARSSL_DIR)/src/*.c) \
                $(wildcard $(BEARSSL_DIR)/src/x509/*.c)
 BEARSSL_OBJS = $(patsubst %.c,%.o,$(BEARSSL_SRCS))
 
-# Runtime objects
-CRT0_OBJ = crt0.o
+# Runtime objects (disabled — crt0.c source no longer available)
+# CRT0_OBJ = crt0.o
 LIBALJEFRA_OBJ = libAlJefra.o
 
-# Output
-TARGET = ai_agent.app
+# Output (disabled — depends on crt0.o)
+# TARGET = ai_agent.app
 
 .PHONY: all clean bearssl
 
-all: $(TARGET)
+all:
+	@echo "netstack: application targets disabled (missing crt0.c runtime stub)"
 
-# Build runtime objects
-$(CRT0_OBJ): $(DEMO_SRC)/crt0.c
-	$(CC) $(CFLAGS) -o $@ $<
+# Build runtime objects (disabled — crt0.c source no longer available)
+# $(CRT0_OBJ): $(DEMO_SRC)/crt0.c
+# 	$(CC) $(CFLAGS) -o $@ $<
 
 $(LIBALJEFRA_OBJ): $(API_SRC)/libAlJefra.c $(API_SRC)/libAlJefra.h
 	$(CC) $(CFLAGS) -o $@ $<
@@ -77,29 +82,29 @@ $(LIBALJEFRA_OBJ): $(API_SRC)/libAlJefra.c $(API_SRC)/libAlJefra.h
 $(BEARSSL_DIR)/src/%.o: $(BEARSSL_DIR)/src/%.c
 	$(CC) $(CFLAGS) -I$(BEARSSL_DIR)/src -o $@ $<
 
-# Link everything
-$(TARGET): $(CRT0_OBJ) $(LIBALJEFRA_OBJ) $(ALL_OBJS) $(BEARSSL_OBJS)
-	$(LD) $(LDFLAGS) -o $@ $^
+# Link everything (disabled — depends on crt0.o)
+# $(TARGET): $(CRT0_OBJ) $(LIBALJEFRA_OBJ) $(ALL_OBJS) $(BEARSSL_OBJS)
+# 	$(LD) $(LDFLAGS) -o $@ $^
 
-# Build without BearSSL (for testing TCP/IP only)
-nettest_main.o: nettest_main.c netstack.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-nettest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) nettest_main.o $(NETSTACK_SRCS:.c=.o)
-	$(LD) $(LDFLAGS) -o $@ $^
-
-minitest.o: minitest.c netstack.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-minitest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) minitest.o $(NETSTACK_SRCS:.c=.o)
-	$(LD) $(LDFLAGS) -o $@ $^
-
-tlstest.o: tlstest.c netstack.h tls.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-TLS_TEST_OBJS = $(NETSTACK_SRCS:.c=.o) $(TLS_SRCS:.c=.o) libc_shim.o
-tlstest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) tlstest.o $(TLS_TEST_OBJS) $(BEARSSL_OBJS)
-	$(LD) $(LDFLAGS) -o $@ $^
+# Build without BearSSL (for testing TCP/IP only) — disabled, depends on crt0.o
+# nettest_main.o: nettest_main.c netstack.h
+# 	$(CC) $(CFLAGS) -o $@ $<
+#
+# nettest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) nettest_main.o $(NETSTACK_SRCS:.c=.o)
+# 	$(LD) $(LDFLAGS) -o $@ $^
+#
+# minitest.o: minitest.c netstack.h
+# 	$(CC) $(CFLAGS) -o $@ $<
+#
+# minitest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) minitest.o $(NETSTACK_SRCS:.c=.o)
+# 	$(LD) $(LDFLAGS) -o $@ $^
+#
+# tlstest.o: tlstest.c netstack.h tls.h
+# 	$(CC) $(CFLAGS) -o $@ $<
+#
+# TLS_TEST_OBJS = $(NETSTACK_SRCS:.c=.o) $(TLS_SRCS:.c=.o) libc_shim.o
+# tlstest.app: $(CRT0_OBJ) $(LIBALJEFRA_OBJ) tlstest.o $(TLS_TEST_OBJS) $(BEARSSL_OBJS)
+# 	$(LD) $(LDFLAGS) -o $@ $^
 
 clean:
 	rm -f *.o $(TARGET) nettest.app minitest.app tlstest.app

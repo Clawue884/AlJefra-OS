@@ -10,6 +10,12 @@
  *   5. Timer (verify kernel timer works)
  *   6. Bus (PCIe config space ready)
  *   7. SMP (detect cores)
+ *
+ * Init order note: x86-64 initializes MMU before IRQ (step 3 before 4)
+ * because Pure64/bootloader has already set up an identity-mapped page
+ * table — we only need to initialize the page allocator.  AArch64 and
+ * RISC-V do IRQ before MMU because their interrupt controllers (GIC,
+ * PLIC) must be configured before enabling the MMU.
  */
 
 #include "../../hal/hal.h"

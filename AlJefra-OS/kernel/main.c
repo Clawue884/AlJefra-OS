@@ -133,7 +133,16 @@ static void detect_hardware(void)
 #define PCI_SUBCLASS_ETHERNET  0x00
 #define PCI_SUBCLASS_USB       0x03
 
-/* ── Register all built-in driver ops tables ── */
+/* ── Register all built-in driver ops tables ──
+ *
+ * These 11 "registered" drivers implement driver_ops_t and are matched by
+ * PCI vendor/device ID in load_builtin_drivers() below.
+ *
+ * The remaining 11 "library" drivers (ps2, usb_hid, lfb, serial_console,
+ * acpi_lite, dt_parser, pcie, emmc, wifi_framework, aes_ccmp) provide
+ * utility APIs called directly by the kernel — they do not use this
+ * registration path.  See kernel/driver_loader.h for the full list.
+ */
 static void register_builtin_drivers(void)
 {
     e1000_register();

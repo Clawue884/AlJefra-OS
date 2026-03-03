@@ -15,7 +15,7 @@
 
 #include "klog.h"
 #include "../hal/hal.h"
-#include "../kernel/fs.h"
+#include "fs.h"
 #include "../lib/string.h"
 #include <stdarg.h>
 

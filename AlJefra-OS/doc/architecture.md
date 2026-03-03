@@ -30,11 +30,12 @@ The system is organized into six horizontal layers. Each layer depends only on t
 |  Marketplace Client  |  Driver Download  |  OTA Updates      |
 +==============================================================+
 |                  LAYER 2: PORTABLE DRIVERS                   |
-|  Storage: NVMe, AHCI, VirtIO-blk, IDE                       |
-|  Network: e1000, VirtIO-net, RTL8139, RTL8169                |
-|  GPU:     VirtIO-GPU, Bochs VBE, VESA framebuffer            |
-|  Input:   PS/2 keyboard, PS/2 mouse, USB HID                 |
-|  Bus:     PCI, USB (XHCI, EHCI, UHCI)                       |
+|  Storage: NVMe, AHCI, VirtIO-Blk, eMMC, UFS                 |
+|  Network: e1000, VirtIO-Net, RTL8169, Intel WiFi, BCM WiFi   |
+|  Network Support: WiFi Framework, AES-CCMP                   |
+|  Input:   PS/2, xHCI (USB 3.0), USB HID, Touchscreen        |
+|  Display: Linear Framebuffer, Serial Console                 |
+|  Bus:     PCIe, ACPI Lite, Device Tree Parser                |
 +==============================================================+
 |             LAYER 1: HARDWARE ABSTRACTION LAYER              |
 |  CPU  |  Interrupts  |  Timer  |  MMU  |  Bus Scan          |
@@ -146,31 +147,32 @@ AlJefra-OS/
 |-- kernel/                        Core kernel (architecture-independent)
 |   |-- main.c                     kernel_main() entry point
 |   |-- sched.c                    Round-robin scheduler
-|   |-- mm.c                       Physical + virtual memory manager
-|   |-- vfs.c                      Virtual filesystem layer
 |   |-- syscall.c                  System call dispatch
-|   +-- ipc.c                      Inter-process communication
+|   |-- driver_loader.c            Built-in + runtime driver loading
+|   |-- ai_bootstrap.c             AI-driven driver download orchestration
+|   |-- ai_chat.c                  Natural language command interface
+|   |-- fs.c                       BMFS filesystem (read/write/list/create/delete)
+|   |-- keyboard.c                 Keyboard input wiring (PS/2 + USB HID)
+|   |-- dhcp.c                     Kernel-level DHCP client
+|   |-- ota.c                      Over-the-air update system
+|   |-- panic.c                    Kernel panic handler (register dump, backtrace)
+|   |-- klog.c                     Persistent kernel logging (ring buffer + disk)
+|   +-- memprotect.c               Memory protection (NX, WP, SMEP/SMAP, guard pages)
 |
 |-- drivers/                       Portable device drivers
-|   |-- storage/                   NVMe, AHCI, VirtIO-blk, IDE
-|   |-- net/                       e1000, VirtIO-net, RTL8139, RTL8169
-|   |-- gpu/                       VirtIO-GPU, Bochs VBE, VESA
-|   |-- input/                     PS/2 keyboard, PS/2 mouse, USB HID
-|   +-- bus/                       PCI enumeration, USB host (xHCI, EHCI, UHCI)
+|   |-- storage/                   NVMe, AHCI, VirtIO-Blk, eMMC, UFS
+|   |-- network/                   e1000, VirtIO-Net, RTL8169, Intel WiFi, BCM WiFi,
+|   |                              WiFi Framework, AES-CCMP
+|   |-- input/                     PS/2, xHCI (USB 3.0), USB HID, Touchscreen
+|   |-- display/                   Linear Framebuffer, Serial Console
+|   +-- bus/                       PCIe enumeration, ACPI Lite, Device Tree Parser
 |
 |-- net/                           Network protocol stack
-|   |-- ethernet.c                 L2 Ethernet framing
-|   |-- arp.c                      ARP resolution
-|   |-- ipv4.c                     IPv4 routing
-|   |-- udp.c                      UDP datagrams
-|   |-- tcp.c                      TCP streams
-|   |-- dhcp.c                     DHCP client (auto-config)
-|   +-- dns.c                      DNS resolver
+|   |-- tcp.c                      TCP client (SYN/ACK, send/recv, close)
+|   +-- dhcp.c                     DHCP client (DORA sequence)
 |
 |-- ai/                            AI subsystem
-|   |-- bootstrap.c                Hardware scan + driver download logic
-|   |-- manifest.c                 JSON hardware manifest builder
-|   +-- chat.c                     Conversational AI interface
+|   +-- marketplace.c              Driver marketplace REST client
 |
 |-- store/                         Driver marketplace client
 |-- gpu_engine/                    Framebuffer GPU rendering engine

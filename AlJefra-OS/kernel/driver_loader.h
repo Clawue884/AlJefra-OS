@@ -4,6 +4,20 @@
  * Supports two kinds of drivers:
  *   1. Built-in: compiled into the kernel image, matched by name
  *   2. Runtime:  loaded from .ajdrv packages downloaded via marketplace
+ *
+ * Driver patterns used in the codebase:
+ *
+ *   REGISTERED DRIVERS (11) — implement driver_ops_t + _register():
+ *     e1000, rtl8169, virtio_net, virtio_blk, ahci, nvme, touch, ufs,
+ *     intel_wifi, xhci, bcm_wifi
+ *     These are matched by PCI vendor/device ID during boot in
+ *     kernel/main.c:load_builtin_drivers().
+ *
+ *   LIBRARY DRIVERS (11) — provide utility APIs called directly:
+ *     ps2, usb_hid, lfb, serial_console, acpi_lite, dt_parser, pcie,
+ *     emmc, wifi_framework, aes_ccmp, bcm_wifi (also library APIs)
+ *     These expose functions (e.g. ps2_init(), lfb_clear()) used by
+ *     the kernel or other drivers without going through driver_ops_t.
  */
 
 #ifndef ALJEFRA_DRIVER_LOADER_H

@@ -106,11 +106,7 @@ static void parse_version(const char *ver, uint32_t *major, uint32_t *minor, uin
 
 /* ── OTA Update: Download + Stage ── */
 
-/* TCP helpers from net/ */
-extern hal_status_t tcp_connect(void *conn, uint32_t ip, uint16_t port);
-extern int32_t tcp_send(void *conn, const void *data, uint32_t len);
-extern int32_t tcp_recv(void *conn, void *buf, uint32_t max, uint32_t timeout_ms);
-extern void tcp_close(void *conn);
+#include "../net/tcp.h"
 
 hal_status_t ota_download_update(const char *url, const char *version)
 {

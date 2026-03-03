@@ -17,14 +17,7 @@
 /* Network/marketplace modules (from net/ and ai/) */
 extern hal_status_t dhcp_discover(uint32_t *ip, uint32_t *gateway, uint32_t *dns);
 extern void tcp_init(uint32_t local_ip, uint32_t gateway, uint32_t netmask);
-extern void marketplace_set_gateway(uint32_t gateway_ip);
-extern hal_status_t marketplace_connect(void);
-extern hal_status_t marketplace_send_manifest(const hardware_manifest_t *m);
-extern hal_status_t marketplace_get_driver(uint16_t vendor, uint16_t device,
-                                            void **data, uint64_t *size);
-extern void marketplace_disconnect(void);
-extern hal_status_t marketplace_check_updates(const char *os_version,
-                                               char *update_url, uint32_t url_max);
+#include "../ai/marketplace.h"
 
 /* AlJefra Store Ed25519 public key (32 bytes).
  * In development mode this is all-zeros, and signature verification is skipped.

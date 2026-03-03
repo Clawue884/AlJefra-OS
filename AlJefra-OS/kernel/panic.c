@@ -14,7 +14,7 @@
 
 #include "panic.h"
 #include "../hal/hal.h"
-#include "../kernel/fs.h"
+#include "fs.h"
 #include "../lib/string.h"
 
 /* ---- Internal state ---- */

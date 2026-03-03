@@ -86,7 +86,6 @@ DRIVER_SRCS = $(wildcard drivers/storage/*.c) \
               $(wildcard drivers/network/*.c) \
               $(wildcard drivers/input/*.c) \
               $(wildcard drivers/display/*.c) \
-              $(wildcard drivers/gpu/*.c) \
               $(wildcard drivers/bus/*.c)
 
 # Network stack
@@ -154,7 +153,6 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/drivers/network
 	@mkdir -p $(BUILD_DIR)/drivers/input
 	@mkdir -p $(BUILD_DIR)/drivers/display
-	@mkdir -p $(BUILD_DIR)/drivers/gpu
 	@mkdir -p $(BUILD_DIR)/drivers/bus
 	@mkdir -p $(BUILD_DIR)/net
 	@mkdir -p $(BUILD_DIR)/ai
